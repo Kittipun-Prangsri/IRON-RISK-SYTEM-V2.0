@@ -1,0 +1,2211 @@
+<script>
+/**
+ * IRON ZERO RISK -- CORE JAVASCRIPT
+ */
+
+// -- ENVIRONMENT & STORAGE HELPERS ----------------------------
+var isGAS = typeof google !== 'undefined' && google.script && google.script.run;
+
+var safeStorage = {
+  getItem: function(key) {
+    try { return (typeof localStorage !== 'undefined') ? localStorage.getItem(key) : null; } catch (e) { return null; }
+  },
+  setItem: function(key, val) {
+    try { if (typeof localStorage !== 'undefined') localStorage.setItem(key, val); } catch (e) { }
+  },
+  removeItem: function(key) {
+    try { if (typeof localStorage !== 'undefined') localStorage.removeItem(key); } catch (e) { }
+  }
+};
+
+// -- CORE UI & AUTH HELPERS (TOP-LEVEL EXPOSURE) ----------------
+
+window.showToast = function(message, type) {
+  var type = type || "success";
+  var container = document.getElementById('toast-container');
+  var toast = document.createElement('div');
+  toast.className = "toast " + type;
+  
+  var iconClass = "fa-check-circle";
+  if (type === "error") { iconClass = "fa-exclamation-circle"; }
+  else if (type === "info") { iconClass = "fa-info-circle"; }
+  
+  toast.innerHTML = '<i class="fas ' + iconClass + '"></i><span>' + message + '</span>';
+  container.appendChild(toast);
+  
+  setTimeout(function() {
+    toast.style.opacity = '0';
+    setTimeout(function() { toast.remove(); }, 400);
+  }, 3000);
+};
+
+window.showLoading = function(show, text) {
+  var show = (show === undefined) ? true : show;
+  var text = text || "กำลังโหลดข้อมูล...";
+  var overlay = document.getElementById('loading-overlay');
+  document.getElementById('loading-text').textContent = text;
+  if (show) { overlay.classList.add('show'); }
+  else { overlay.classList.remove('show'); }
+};
+
+window.navigate = function(pageId) {
+  document.querySelectorAll('.page').forEach(function(page) { page.classList.remove('active'); });
+  document.querySelectorAll('.nav-item').forEach(function(item) { item.classList.remove('active'); });
+  
+  var targetPage = document.getElementById('page-' + pageId);
+  var targetNav = document.getElementById('nav-' + pageId);
+  
+  if (targetPage) { targetPage.classList.add('active'); }
+  if (targetNav) { targetNav.classList.add('active'); }
+  
+  var pageTitles = {
+    dashboard: "Dashboard ภาพรวม",
+    children: "ข้อมูลเด็กทั้งหมด",
+    risk: "การประเมินความเสี่ยง",
+    assessment: "แบบประเมินรายบุคคล",
+    nutrition: "สถานะโภชนาการ",
+    iron: "ยาธาตุเหล็ก",
+    villages: "หมู่บ้าน",
+    add: selectedChild ? "แก้ไขข้อมูลเด็ก" : "เพิ่มข้อมูลเด็ก",
+    log: "บันทึกกิจกรรม",
+    settings: "ตั้งค่าระบบ"
+  };
+  
+  document.getElementById('page-title').textContent = pageTitles[pageId] || "Dashboard";
+  window.closeSidebar();
+  
+  setTimeout(function() {
+    if (pageId === 'dashboard') { window.renderDashboardCharts(); }
+    else if (pageId === 'risk') { window.renderRiskCharts(); }
+    else if (pageId === 'nutrition') { window.renderNutritionCharts(); }
+  }, 100);
+};
+
+window.setSession = function(user) {
+  currentUser = user;
+  safeStorage.setItem("iron_zero_session", JSON.stringify(currentUser));
+  
+  document.getElementById('login-container').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  
+  window.applyUserRolePermissions();
+  window.showToast("เข้าสู่ระบบสำเร็จ ยินดีต้อนรับ " + currentUser.name + " 🎉");
+  
+  window.navigate('dashboard');
+  window.refreshData();
+};
+
+window.triggerDevLogin = function() {
+  var selectedId = document.getElementById('dev-role-selector').value;
+  if (!selectedId) {
+    window.showToast("กรุณาเลือกบัญชีผู้ใช้จำลอง", "info");
+    return;
+  }
+  
+  var user = MOCK_USERS.filter(function(u) { return u.id === selectedId; })[0];
+  if (user) {
+    window.setSession(user);
+  }
+};
+
+window.handleSSOLogin = function(provider) {
+  window.showLoading(true, "กำลังเชื่อมต่อกับ " + (provider === 'google' ? 'Google' : provider === 'microsoft' ? 'Microsoft' : 'MOPH ID') + " SSO...");
+  setTimeout(function() {
+    window.showLoading(false);
+    var mockStaff = MOCK_USERS[0]; 
+    if (provider === 'microsoft') { mockStaff = MOCK_USERS[1]; }
+    
+    if (isGAS) {
+      google.script.run
+        .withSuccessHandler(function(res) {
+          if (res.success) {
+            window.setSession(res.user);
+          } else {
+            window.showToast(res.error || "เข้าสู่ระบบล้มเหลว", "error");
+          }
+        })
+        .withFailureHandler(function(err) {
+          window.showToast(err.toString(), "error");
+        })
+        .verifyUserLogin("SSO", mockStaff.email, "");
+    } else {
+      window.setSession(mockStaff);
+    }
+  }, 1000);
+};
+
+// -- STATE MANAGEMENT -----------------------------------------
+var allChildren = [];
+var filteredChildren = [];
+var activities = [];
+var villagesData = {};
+var selectedChild = null;
+var currentUser = null;
+var charts = {};
+var selectedAssessmentChild = null;
+var mockGeneratedOTP = "";
+var otpTimerInterval = null;
+
+// -- MOCK DATA ------------------------------------------------
+var MOCK_USERS = [
+  { id: "ST001", name: "นพ. สมชาย รักดี", role: "เจ้าหน้าที่ รพ.", email: "staff1@example.com", lineUserId: "", phone: "0811112222", assignedVillage: "ทั้งหมด", status: "Active" },
+  { id: "ST002", name: "พยาบาล สมศรี สุขใจ", role: "เจ้าหน้าที่ รพ.", email: "staff2@example.com", lineUserId: "", phone: "0822223333", assignedVillage: "ทั้งหมด", status: "Active" },
+  { id: "AOR001", name: "อสม. สมใจ ชุมชน", role: "อสม.", email: "", lineUserId: "U111122223333", phone: "0833334444", assignedVillage: "บ้านคลองหาด", status: "Active" },
+  { id: "AOR002", name: "อสม. บุญมี รักถิ่น", role: "อสม.", email: "", lineUserId: "U444455556666", phone: "0844445555", assignedVillage: "บ้านเขาดิน", status: "Active" },
+  { id: "AOR003", name: "อสม. ดวงใจ ปัญญา", role: "อสม.", email: "", lineUserId: "", phone: "0855556666", assignedVillage: "บ้านป่าช้ากวาง", status: "Active" }
+];
+
+var SAKAEO_ADDRESS_DATA = {
+  "id": 18,
+  "name": "สระแก้ว",
+  "districts": [
+    {
+      "id": 2701,
+      "name": "เมืองสระแก้ว",
+      "sub_districts": [
+        { "id": 270101, "name": "สระแก้ว", "zip_code": 27000 },
+        { "id": 270102, "name": "บ้านแก้ง", "zip_code": 27000 },
+        { "id": 270103, "name": "ศาลาลำดวน", "zip_code": 27000 },
+        { "id": 270104, "name": "โคกปี่ฆ้อง", "zip_code": 27000 },
+        { "id": 270105, "name": "ท่าแยก", "zip_code": 27000 },
+        { "id": 270106, "name": "ท่าเกษม", "zip_code": 27000 },
+        { "id": 270108, "name": "สระขวัญ", "zip_code": 27000 },
+        { "id": 270111, "name": "หนองบอน", "zip_code": 27000 }
+      ]
+    },
+    {
+      "id": 2702,
+      "name": "คลองหาด",
+      "sub_districts": [
+        { "id": 270201, "name": "คลองหาด", "zip_code": 27260 },
+        { "id": 270202, "name": "ไทยอุดม", "zip_code": 27260 },
+        { "id": 270203, "name": "ซับมะกรูด", "zip_code": 27260 },
+        { "id": 270204, "name": "ไทรเดี่ยว", "zip_code": 27260 },
+        { "id": 270205, "name": "คลองไก่เถื่อน", "zip_code": 27260 },
+        { "id": 270206, "name": "เบญจขร", "zip_code": 27260 },
+        { "id": 270207, "name": "ไทรทอง", "zip_code": 27260 }
+      ]
+    },
+    {
+      "id": 2703,
+      "name": "ตาพระยา",
+      "sub_districts": [
+        { "id": 270301, "name": "ตาพระยา", "zip_code": 27180 },
+        { "id": 270302, "name": "ทัพเสด็จ", "zip_code": 27180 },
+        { "id": 270306, "name": "ทัพราช", "zip_code": 27180 },
+        { "id": 270307, "name": "ทัพไทย", "zip_code": 27180 },
+        { "id": 270309, "name": "โคคลาน", "zip_code": 27180 }
+      ]
+    },
+    {
+      "id": 2704,
+      "name": "วังน้ำเย็น",
+      "sub_districts": [
+        { "id": 270401, "name": "วังน้ำเย็น", "zip_code": 27210 },
+        { "id": 270403, "name": "ตาหลังใน", "zip_code": 27210 },
+        { "id": 270405, "name": "คลองหินปูน", "zip_code": 27210 },
+        { "id": 270406, "name": "ทุ่งมหาเจริญ", "zip_code": 27210 }
+      ]
+    },
+    {
+      "id": 2705,
+      "name": "วัฒนานคร",
+      "sub_districts": [
+        { "id": 270501, "name": "วัฒนานคร", "zip_code": 27160 },
+        { "id": 270502, "name": "ท่าเกวียน", "zip_code": 27160 },
+        { "id": 270503, "name": "ผักขะ", "zip_code": 27160 },
+        { "id": 270504, "name": "โนนหมากเค็ง", "zip_code": 27160 },
+        { "id": 270505, "name": "หนองน้ำใส", "zip_code": 27160 },
+        { "id": 270506, "name": "ช่องกุ่ม", "zip_code": 27160 },
+        { "id": 270507, "name": "หนองแวง", "zip_code": 27160 },
+        { "id": 270508, "name": "แซร์ออ", "zip_code": 27160 },
+        { "id": 270509, "name": "หนองหมากฝ้าย", "zip_code": 27160 },
+        { "id": 270510, "name": "หนองตะเคียนบอน", "zip_code": 27160 },
+        { "id": 270511, "name": "ห้วยโจด", "zip_code": 27160 }
+      ]
+    },
+    {
+      "id": 2706,
+      "name": "อรัญประเทศ",
+      "sub_districts": [
+        { "id": 270601, "name": "อรัญประเทศ", "zip_code": 27120 },
+        { "id": 270602, "name": "เมืองไผ่", "zip_code": 27120 },
+        { "id": 270603, "name": "หันทราย", "zip_code": 27120 },
+        { "id": 270604, "name": "คลองน้ำใส", "zip_code": 27120 },
+        { "id": 270605, "name": "ท่าข้าม", "zip_code": 27120 },
+        { "id": 270606, "name": "ป่าไร่", "zip_code": 27120 },
+        { "id": 270607, "name": "ทับพริก", "zip_code": 27120 },
+        { "id": 270608, "name": "บ้านใหม่หนองไทร", "zip_code": 27120 },
+        { "id": 270609, "name": "ผ่านศึก", "zip_code": 27120 },
+        { "id": 270610, "name": "หนองสังข์", "zip_code": 27120 },
+        { "id": 270611, "name": "คลองทับจันทร์", "zip_code": 27120 },
+        { "id": 270612, "name": "ฟากห้วย", "zip_code": 27120 },
+        { "id": 270613, "name": "บ้านด่าน", "zip_code": 27120 }
+      ]
+    },
+    {
+      "id": 2707,
+      "name": "เขาฉกรรจ์",
+      "sub_districts": [
+        { "id": 270701, "name": "เขาฉกรรจ์", "zip_code": 27000 },
+        { "id": 270702, "name": "หนองหว้า", "zip_code": 27000 },
+        { "id": 270703, "name": "พระเพลิง", "zip_code": 27000 },
+        { "id": 270704, "name": "เขาสามสิบ", "zip_code": 27000 }
+      ]
+    },
+    {
+      "id": 2708,
+      "name": "โคกสูง",
+      "sub_districts": [
+        { "id": 270801, "name": "โคกสูง", "zip_code": 27120 },
+        { "id": 270802, "name": "หนองม่วง", "zip_code": 27180 },
+        { "id": 270803, "name": "หนองแวง", "zip_code": 27180 },
+        { "id": 270804, "name": "โนนหมากมุ่น", "zip_code": 27120 }
+      ]
+    },
+    {
+      "id": 2709,
+      "name": "วังสมบูรณ์",
+      "sub_districts": [
+        { "id": 270901, "name": "วังสมบูรณ์", "zip_code": 27250 },
+        { "id": 270902, "name": "วังใหม่", "zip_code": 27250 },
+        { "id": 270903, "name": "วังทอง", "zip_code": 27250 }
+      ]
+    }
+  ]
+};
+
+var KHLONG_HAT_VILLAGES = [
+  { name: "บ้านคลองหาด", moo: 1, label: "บ้านคลองหาด (หมู่ 1)" },
+  { name: "บ้านเขาผาผึ้ง", moo: 2, label: "บ้านเขาผาผึ้ง (หมู่ 2)" },
+  { name: "บ้านป่าช้ากวาง", moo: 3, label: "บ้านป่าช้ากวาง (หมู่ 3)" },
+  { name: "บ้านเขาเลื่อม", moo: 4, label: "บ้านเขาเลื่อม (หมู่ 4)" },
+  { name: "บ้านคลองหาด", moo: 5, label: "บ้านคลองหาด (หมู่ 5)" },
+  { name: "บ้านทับวังวน", moo: 6, label: "บ้านทับวังวน (หมู่ 6)" },
+  { name: "บ้านซับมะกรูด", moo: 7, label: "บ้านซับมะกรูด (หมู่ 7)" },
+  { name: "บ้านเขาดิน", moo: 8, label: "บ้านเขาดิน (หมู่ 8)" },
+  { name: "บ้านเขาเลื่อมใต้", moo: 9, label: "บ้านเขาเลื่อมใต้ (หมู่ 9)" },
+  { name: "บ้านไทยพัฒนา", moo: 10, label: "บ้านไทยพัฒนา (หมู่ 10)" },
+  { name: "บ้านป่าตะแบก", moo: 11, label: "บ้านป่าตะแบก (หมู่ 11)" },
+  { name: "บ้านเขาช่องแคบ", moo: 12, label: "บ้านเขาช่องแคบ (หมู่ 12)" },
+  { name: "บ้านคลองหาดพัฒนา", moo: 13, label: "บ้านคลองหาดพัฒนา (หมู่ 13)" }
+];
+
+var MOCK_CHILDREN = [
+  { id: "CHILD001", name: "ดช.ภวินท์ ศรีสวนแก้ว", age: "4 ปี", house: "77.0", moo: "3.0", village: "บ้านป่าช้ากวาง", tambon: "คลองหาด", amphoe: "คลองหาด", province: "สระแก้ว", lat: 13.462987, lng: 102.253093, hct: 35.0, weight: 15.8, height: 103.0, nutrition: "สมส่วน", iron: "ได้", food: "บางครั้ง", social: "ขัดสน", guardian: "สมหญิง", status: "เสี่ยงปานกลาง", lastDate: "-", notes: "" },
+  { id: "CHILD002", name: "ดช.หัสดี ศรีดำ", age: "4 ปี", house: "9849.0", moo: "8.0", village: "บ้านเขาดิน", tambon: "คลองหาด", amphoe: "คลองหาด", province: "สระแก้ว", lat: 13.452623, lng: 102.33218, hct: 35.0, weight: 19.4, height: 104.0, nutrition: "สมส่วน", iron: "ได้", food: "บางครั้ง", social: "ขัดสน", guardian: "เทวัญ", status: "เสี่ยงปานกลาง", lastDate: "-", notes: "" },
+  { id: "CHILD003", name: "ดช.ธารณ์ภัควัฒน์ สุทธินันท์", age: "4 ปี", house: "320.0", moo: "1.0", village: "บ้านคลองหาด", tambon: "คลองหาด", amphoe: "คลองหาด", province: "สระแก้ว", lat: 13.453589, lng: 102.299076, hct: 34.0, weight: 13.7, height: 103.0, nutrition: "สมส่วน", iron: "ได้", food: "เป็นประจำ", social: "เพียงพอ", guardian: "เบญจมาศ", status: "เสี่ยงต่ำ", lastDate: "-", notes: "" },
+  { id: "CHILD004", name: "ดญ.นิรดา คล้อยตาม", age: "9 เดือน", house: "250.0", moo: "9.0", village: "บ้านเขาเลื่อมใต้", tambon: "คลองหาด", amphoe: "คลองหาด", province: "สระแก้ว", lat: 13.4089029, lng: 102.3070586, hct: 36.0, weight: 7.52, height: 69.0, nutrition: "สมส่วน", iron: "ได้", food: "เป็นประจำ", social: "เพียงพอ", guardian: "ณรงค์", status: "เสี่ยงต่ำ", lastDate: "-", notes: "" },
+  { id: "CHILD005", name: "ดช.ภูรินทร์ ทองวิจิตร", age: "4 ปี", house: "120.0", moo: "5.0", village: "บ้านคลองหาด", tambon: "คลองหาด", amphoe: "คลองหาด", province: "สระแก้ว", lat: 13.4507208, lng: 102.2989702, hct: 35.0, weight: 16.1, height: 98.0, nutrition: "สมส่วน", iron: "ได้", food: "เป็นประจำ", social: "เพียงพอ", guardian: "ลออ", status: "เสี่ยงต่ำ", lastDate: "-", notes: "" },
+  { id: "CHILD006", name: "ดญ.สุนีย์พร โพธิ์งาม", age: "4 ปี", house: "100.0", moo: "4.0", village: "บ้านเขาเลื่อม", tambon: "คลองหาด", amphoe: "คลองหาด", province: "สระแก้ว", lat: 13.41006, lng: 102.30072, hct: 31.0, weight: 15.2, height: 101.0, nutrition: "สมส่วน", iron: "ได้", food: "บางครั้ง", social: "เพียงพอ", guardian: "นที", status: "เสี่ยงปานกลาง", lastDate: "-", notes: "" },
+  { id: "CHILD007", name: "ดญ.ภูรดา แก้วละลัย", age: "4 ปี", house: "129.0", moo: "5.0", village: "บ้านคลองหาด", tambon: "คลองหาด", amphoe: "คลองหาด", province: "สระแก้ว", lat: 13.459817, lng: 102.301409, hct: 36.0, weight: 15.2, height: 108.0, nutrition: "สมส่วน", iron: "ได้", food: "เป็นประจำ", social: "เพียงพอ", guardian: "ลออ", status: "เสี่ยงต่ำ", lastDate: "-", notes: "" },
+  { id: "CHILD008", name: "ดช.ชินภัทร แก้วละลัย", age: "9 เดือน", house: "129.0", moo: "5.0", village: "บ้านคลองหาด", tambon: "คลองหาด", amphoe: "คลองหาด", province: "สระแก้ว", lat: 13.4721432, lng: 102.2568526, hct: 31.0, weight: 8.3, height: 74.0, nutrition: "สมส่วน", iron: "ได้", food: "บางครั้ง", social: "เพียงพอ", guardian: "ลออ", status: "เสี่ยงปานกลาง", lastDate: "-", notes: "" },
+  { id: "CHILD009", name: "ดช.ธนดล กางกอน", age: "9 เดือน", house: "67.0", moo: "11.0", village: "บ้านป่าตะแบก", tambon: "คลองหาด", amphoe: "คลองหาด", province: "สระแก้ว", lat: 13.4916354, lng: 102.2773734, hct: 34.0, weight: 7.35, height: 68.0, nutrition: "สมส่วน", iron: "ได้", food: "เป็นประจำ", social: "เพียงพอ", guardian: "นฤมล", status: "เสี่ยงต่ำ", lastDate: "-", notes: "" },
+  { id: "CHILD010", name: "ดช.ธนวินต์ ธนสัญชัย", age: "4 ปี", house: "4.0", moo: "6.0", village: "บ้านทับวังวน", tambon: "คลองหาด", amphoe: "คลองหาด", province: "สระแก้ว", lat: 13.4589002, lng: 102.3052735, hct: 37.0, weight: 14.0, height: 100.0, nutrition: "สมส่วน", iron: "ได้", food: "เป็นประจำ", social: "เพียงพอ", guardian: "รัชฎาภรณ์", status: "เสี่ยงต่ำ", lastDate: "-", notes: "" },
+  { id: "CHILD011", name: "ดช.รัชพล สาลีนนท์", age: "9 เดือน", house: "8.0", moo: "6.0", village: "บ้านทับวังวน", tambon: "คลองหาด", amphoe: "คลองหาด", province: "สระแก้ว", lat: 13.4497395, lng: 102.3048127, hct: 30.0, weight: 6.8, height: 68.0, nutrition: "ค่อนข้างผอม", iron: "ได้", food: "ไม่ได้บริโภค", social: "ไม่เพียงพอ", guardian: "สัมฤทธิ์", status: "เสี่ยงสูง", lastDate: "-", notes: "ได้รับยาแต่ไม่ได้กินยา, Hct ก่อนรักษา 30%" }
+];
+
+var MOCK_LOGS = [
+  { timestamp: "05/06/2025 21:00", user: "local-user@example.com", action: "โหลดข้อมูล", details: "โหลดข้อมูลเด็กเข้าระบบทั้งหมด" },
+  { timestamp: "05/06/2025 20:30", user: "local-user@example.com", action: "เพิ่มข้อมูลเด็ก", details: "เพิ่มเด็ก ดช.รัชพล สาลีนนท์" }
+];
+
+var CSV_HEADER_MAP = {
+  "id": ["ID", "id", "ไอดี", "รหัสเด็ก"],
+  "name": ["ชื่อเด็ก", "ชื่อ", "Name", "name", "ชื่อ-นามสกุล"],
+  "age": ["อายุ", "Age", "age"],
+  "house": ["บ้านเลขที่", "บ้าน", "House", "house", "บ้านเลขที่ตามทะเบียนบ้าน"],
+  "moo": ["หมู่", "หมู่ที่", "Moo", "moo"],
+  "village": ["ชื่อหมู่บ้าน", "หมู่บ้าน", "village", "Village"],
+  "tambon": ["ตำบล", "Subdistrict", "subdistrict", "Tambon", "tambon"],
+  "amphoe": ["อำเภอ", "District", "district", "Amphoe", "amphoe"],
+  "province": ["จังหวัด", "Province", "province"],
+  "lat": ["Lat", "Latitude", "lat", "latitude", "พิกัดละติจูด"],
+  "lng": ["Lng", "Longitude", "lng", "longitude", "พิกัดลองจิจูด"],
+  "hct": ["Hct", "Hct (%)", "hct", "ผลเลือด Hct"],
+  "weight": ["น้ำหนัก(กก.)", "น้ำหนัก (กก.)", "น้ำหนัก", "weight", "Weight"],
+  "height": ["ส่วนสูง(ซม.)", "ส่วนสูง (ซม.)", "ส่วนสูง", "height", "Height"],
+  "nutrition": ["สถานะโภชนาการ", "โภชนาการ", "nutrition", "Nutrition"],
+  "iron": ["ได้รับยาเหล็ก", "ยาเหล็ก", "iron", "Iron", "พฤติกรรมการได้รับยาเสริมธาตุเหล็ก"],
+  "food": ["พฤติกรรมการกินอาหาร", "อาหาร", "food", "Food", "พฤติกรรมการบริโภคอาหารที่มีธาตุเหล็กสูง"],
+  "social": ["ปัจจัยสังคมเศรษฐกิจ", "สังคม", "social", "Social", "ปัจจัยด้านการดูแลและเศรษฐานะครอบครัว"],
+  "guardian": ["ผู้ดูแล", "guardian", "Guardian", "ผู้ปกครอง"],
+  "notes": ["หมายเหตุ", "Notes", "notes", "Note", "note"]
+};
+
+// -- SYSTEM INITIALIZATION ------------------------------------
+
+window.initLocalDb = function() {
+  if (!safeStorage.getItem("iron_zero_children")) {
+    safeStorage.setItem("iron_zero_children", JSON.stringify(MOCK_CHILDREN));
+  }
+  if (!safeStorage.getItem("iron_zero_logs")) {
+    safeStorage.setItem("iron_zero_logs", JSON.stringify(MOCK_LOGS));
+  }
+  if (!safeStorage.getItem("iron_zero_med_logs")) {
+    safeStorage.setItem("iron_zero_med_logs", JSON.stringify([]));
+  }
+};
+
+window.refreshData = function() {
+  window.showLoading(true, "กำลังดึงข้อมูลฐานข้อมูลล่าสุด...");
+  
+  if (isGAS) {
+    google.script.run
+      .withSuccessHandler(function(data) {
+        allChildren = data.children;
+        activities = data.logs;
+        villagesData = data.villages;
+        
+        if (currentUser && currentUser.role === 'อสม.') {
+          allChildren = allChildren.filter(function(c) { return c.village === currentUser.assignedVillage; });
+          villagesData = {};
+          villagesData[currentUser.assignedVillage] = allChildren.length;
+          activities = activities.filter(function(log) {
+            return allChildren.some(function(c) { return log.details.indexOf(c.name) !== -1 || log.details.indexOf(c.id) !== -1; }) || log.user === (currentUser.email || currentUser.name);
+          });
+        }
+        
+        var elEmail = document.getElementById('s-email');
+        var elSheet = document.getElementById('s-sheet');
+        var elUpdated = document.getElementById('s-updated');
+        if (elEmail) { elEmail.textContent = data.userEmail; }
+        if (elSheet) { elSheet.textContent = data.sheetName; }
+        if (elUpdated) { elUpdated.textContent = data.lastUpdated; }
+        
+        var elEmailInput = document.getElementById('s-email-input');
+        var elSheetIdInput = document.getElementById('s-sheet-id-input');
+        var elLastUpdatedAbout = document.getElementById('s-last-updated-about');
+        if (elEmailInput) { elEmailInput.value = data.userEmail; }
+        if (elSheetIdInput) { elSheetIdInput.value = data.sheetName; }
+        if (elLastUpdatedAbout) { elLastUpdatedAbout.textContent = data.lastUpdated; }
+        
+        window.updateUI();
+        window.showLoading(false);
+        window.showToast("รีเฟรชข้อมูลฐานข้อมูลเรียบร้อย ✅");
+      })
+      .withFailureHandler(function(err) {
+        window.showLoading(false);
+        window.showToast("รีเฟรชข้อมูลล้มเหลว: " + err, "error");
+      })
+      .getData();
+  } else {
+    setTimeout(function() {
+      window.initLocalDb();
+      allChildren = JSON.parse(safeStorage.getItem("iron_zero_children")) || [];
+      activities = JSON.parse(safeStorage.getItem("iron_zero_logs")) || [];
+      
+      if (currentUser && currentUser.role === 'อสม.') {
+        allChildren = allChildren.filter(function(c) { return c.village === currentUser.assignedVillage; });
+        activities = activities.filter(function(log) {
+          return allChildren.some(function(c) { return log.details.indexOf(c.name) !== -1 || log.details.indexOf(c.id) !== -1; }) || log.user === currentUser.name;
+        });
+      }
+      
+      villagesData = {};
+      allChildren.forEach(function(c) {
+        if (c.village) { villagesData[c.village] = (villagesData[c.village] || 0) + 1; }
+      });
+      
+      var elEmail = document.getElementById('s-email');
+      var elSheet = document.getElementById('s-sheet');
+      var elUpdated = document.getElementById('s-updated');
+      if (elEmail) { elEmail.textContent = currentUser ? (currentUser.email || "local-user@example.com") : "local-user@example.com"; }
+      if (elSheet) { elSheet.textContent = "ฐานข้อมูลจำลอง (Local Storage)"; }
+      if (elUpdated) { elUpdated.textContent = new Date().toLocaleTimeString(); }
+      
+      window.updateUI();
+      window.showLoading(false);
+      window.showToast("รีเฟรชข้อมูลจำลองสำเร็จ ✅", "info");
+    }, 800);
+  }
+};
+
+// -- UI UPDATES & FILTERS -------------------------------------
+
+window.updateUI = function() {
+  filteredChildren = allChildren.slice();
+  
+  var bChildren = document.getElementById('badge-children');
+  var bLabel = document.getElementById('children-count-label');
+  if (bChildren) { bChildren.textContent = allChildren.length; }
+  if (bLabel) { bLabel.textContent = "มีเด็กปฐมวัยในระบบทั้งหมด " + allChildren.length + " คน"; }
+  
+  window.populateFilterOptions();
+  window.applyFilters();
+
+  var sEmail = document.getElementById('s-email');
+  var sSheet = document.getElementById('s-sheet');
+  var sUpdated = document.getElementById('s-updated');
+  var sEmailInput = document.getElementById('s-email-input');
+  var sSheetIdInput = document.getElementById('s-sheet-id-input');
+  var sLastUpdatedAbout = document.getElementById('s-last-updated-about');
+
+  if (sEmailInput && sEmail) { sEmailInput.value = sEmail.textContent; }
+  if (sSheetIdInput && sSheet) { sSheetIdInput.value = sSheet.textContent; }
+  if (sLastUpdatedAbout && sUpdated) { sLastUpdatedAbout.textContent = sUpdated.textContent; }
+
+  window.loadSystemSettings();
+
+  var isDashboardActive = document.getElementById('page-dashboard') && document.getElementById('page-dashboard').classList.contains('active');
+  var isRiskActive = document.getElementById('page-risk') && document.getElementById('page-risk').classList.contains('active');
+  var isNutritionActive = document.getElementById('page-nutrition') && document.getElementById('page-nutrition').classList.contains('active');
+
+  if (isDashboardActive) { window.renderDashboardCharts(); }
+  if (isRiskActive) { window.renderRiskCharts(); }
+  if (isNutritionActive) { window.renderNutritionCharts(); }
+};
+
+window.populateFilterOptions = function() {
+  var villageSelect = document.getElementById('filter-village');
+  if (villageSelect) {
+    villageSelect.innerHTML = '<option value="all">ทุกหมู่บ้าน</option>';
+    var villagesSet = [];
+    allChildren.forEach(function(c) {
+      if (c.village && villagesSet.indexOf(c.village) === -1) { villagesSet.push(c.village); }
+    });
+    villagesSet.forEach(function(v) {
+      var opt = document.createElement('option');
+      opt.value = v;
+      opt.textContent = v;
+      villageSelect.appendChild(opt);
+    });
+  }
+  
+  var addVillageSelect = document.getElementById('f-village');
+  if (addVillageSelect) {
+    addVillageSelect.innerHTML = '';
+    var defVillages = ["บ้านคลองหาด", "บ้านเขาเลื่อม", "บ้านเขาเลื่อมใต้", "บ้านป่าช้ากวาง", "บ้านเขาดิน", "บ้านป่าตะแบก", "บ้านทับวังวน"];
+    var allUniqueVillages = defVillages.slice();
+    allChildren.forEach(function(c) {
+      if (c.village && allUniqueVillages.indexOf(c.village) === -1) { allUniqueVillages.push(c.village); }
+    });
+    allUniqueVillages.forEach(function(v) {
+      var opt = document.createElement('option');
+      opt.value = v;
+      opt.textContent = v;
+      addVillageSelect.appendChild(opt);
+    });
+  }
+
+  var assessChildSelect = document.getElementById('f-assess-child-select');
+  if (assessChildSelect) {
+    assessChildSelect.innerHTML = '<option value="">-- กรุณาเลือกรายชื่อเด็ก --</option>';
+    allChildren.forEach(function(c) {
+      var opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = c.name + " (" + (c.village ? c.village : 'ไม่ระบุหมู่บ้าน') + ")";
+      assessChildSelect.appendChild(opt);
+    });
+  }
+};
+
+window.applyFilters = function() {
+  var riskFilter = document.getElementById('filter-status').value;
+  var villageFilter = document.getElementById('filter-village').value;
+  var nutritionFilter = document.getElementById('filter-nutrition').value;
+  
+  filteredChildren = allChildren.filter(function(c) {
+    var mRisk = riskFilter === 'all' || c.status === riskFilter;
+    var mVillage = villageFilter === 'all' || c.village === villageFilter;
+    var mNutrition = nutritionFilter === 'all' || c.nutrition === nutritionFilter;
+    return mRisk && mVillage && mNutrition;
+  });
+  
+  window.renderChildrenTable();
+  window.renderDashboardStats();
+  window.renderRiskList();
+  window.renderNutritionTable();
+  window.renderIronTable();
+  window.renderVillageList();
+  window.renderActivityLog();
+};
+
+window.clearFilters = function() {
+  document.getElementById('filter-status').value = 'all';
+  document.getElementById('filter-village').value = 'all';
+  document.getElementById('filter-nutrition').value = 'all';
+  window.applyFilters();
+};
+
+window.handleGlobalSearch = function(val) {
+  var query = val.trim().toLowerCase();
+  if (!query) {
+    window.applyFilters();
+    return;
+  }
+  
+  filteredChildren = allChildren.filter(function(c) { 
+    return (c.name || "").toLowerCase().indexOf(query) !== -1 ||
+           (c.guardian || "").toLowerCase().indexOf(query) !== -1 ||
+           (c.village || "").toLowerCase().indexOf(query) !== -1 ||
+           (c.house || "").toLowerCase().indexOf(query) !== -1;
+  });
+  
+  window.renderChildrenTable();
+};
+
+// -- RENDERING DATA -------------------------------------------
+
+window.renderChildrenTable = function() {
+  var tbody = document.getElementById('tbody-children');
+  if (!tbody) { return; }
+  tbody.innerHTML = '';
+  
+  if (filteredChildren.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="10" class="empty-state"><i class="fas fa-folder-open"></i><p>ไม่พบข้อมูลเด็กปฐมวัย</p></td></tr>';
+    return;
+  }
+  
+  filteredChildren.forEach(function(c) {
+    var riskClass = c.status === "เสี่ยงสูง" ? "high" : c.status === "เสี่ยงปานกลาง" ? "mid" : "low";
+    
+    var ironBadgeText = 'ไม่ได้';
+    var ironColor = 'var(--accent-red)';
+    var ironIcon = 'fa-times-circle';
+    if (c.iron === 'สม่ำเสมอ' || c.iron === 'ได้') {
+      ironBadgeText = 'สม่ำเสมอ';
+      ironColor = 'var(--accent-teal)';
+      ironIcon = 'fa-check-circle';
+    } else if (c.iron === 'ไม่สม่ำเสมอ') {
+      ironBadgeText = 'ไม่สม่ำเสมอ';
+      ironColor = 'var(--accent-amber)';
+      ironIcon = 'fa-exclamation-circle';
+    }
+    var ironBadge = '<span style="color:' + ironColor + ';font-weight:600;"><i class="fas ' + ironIcon + '"></i> ' + ironBadgeText + '</span>';
+    
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td><strong>' + c.name + '</strong></td>' +
+                   '<td>' + c.age + '</td>' +
+                   '<td>' + c.village + '</td>' +
+                   '<td><span class="badge-risk ' + riskClass + '">' + c.status + '</span></td>' +
+                   '<td><strong style="color:var(--accent-blue)">' + (c.hct ? c.hct + '%' : '-') + '</strong></td>' +
+                   '<td>' + (c.weight || '-') + '</td>' +
+                   '<td>' + (c.height || '-') + '</td>' +
+                   '<td>' + (c.nutrition || '-') + '</td>' +
+                   '<td>' + ironBadge + '</td>' +
+                   '<td>' +
+                     '<button class="btn btn-secondary btn-sm" onclick="window.showChildDetail(\'' + c.id + '\')"><i class="fas fa-eye"></i></button> ' +
+                     '<button class="btn btn-secondary btn-sm" onclick="window.editChild(\'' + c.id + '\')" style="color:var(--accent-teal)"><i class="fas fa-edit"></i></button>' +
+                   '</td>';
+    tbody.appendChild(tr);
+  });
+};
+
+window.renderDashboardStats = function() {
+  var total = allChildren.length;
+  var high = allChildren.filter(function(c) { return c.status === "เสี่ยงสูง"; }).length;
+  var mid = allChildren.filter(function(c) { return c.status === "เสี่ยงปานกลาง"; }).length;
+  var low = allChildren.filter(function(c) { return c.status === "เสี่ยงต่ำ"; }).length;
+  
+  var hctSum = 0;
+  var hctCount = 0;
+  allChildren.forEach(function(c) {
+    if (c.hct > 0) { hctSum += c.hct; hctCount++; }
+  });
+  var hctAvg = hctCount ? (hctSum / hctCount).toFixed(1) : "—";
+  
+  var ironGot = allChildren.filter(function(c) { return c.iron === "สม่ำเสมอ" || c.iron === "ได้" || c.iron === "ไม่สม่ำเสมอ"; }).length;
+  var ironPct = total ? Math.round((ironGot / total) * 100) : 0;
+  
+  if (document.getElementById('stat-total')) { document.getElementById('stat-total').textContent = total; }
+  if (document.getElementById('stat-high')) { document.getElementById('stat-high').textContent = high; }
+  if (document.getElementById('stat-mid')) { document.getElementById('stat-mid').textContent = mid; }
+  if (document.getElementById('stat-low')) { document.getElementById('stat-low').textContent = low; }
+  if (document.getElementById('stat-hct')) { document.getElementById('stat-hct').textContent = hctCount ? hctAvg + "%" : "—"; }
+  if (document.getElementById('stat-iron')) { document.getElementById('stat-iron').textContent = ironGot; }
+  if (document.getElementById('stat-iron-pct')) { document.getElementById('stat-iron-pct').textContent = "คิดเป็น " + ironPct + "%"; }
+  
+  if (document.getElementById('iron-pct-label')) { document.getElementById('iron-pct-label').textContent = ironPct + "%"; }
+  if (document.getElementById('iron-progress')) { document.getElementById('iron-progress').style.width = ironPct + "%"; }
+  
+  var tbodyUrgent = document.getElementById('tbody-urgent');
+  if (!tbodyUrgent) { return; }
+  tbodyUrgent.innerHTML = '';
+  
+  var urgentCases = allChildren.filter(function(c) { return c.status === "เสี่ยงสูง"; });
+  if (urgentCases.length === 0) {
+    tbodyUrgent.innerHTML = '<tr><td colspan="6" class="empty-state"><i class="fas fa-heart"></i><p>ยินดีด้วย! ไม่พบเด็กกลุ่มเสี่ยงสูงในระบบ</p></td></tr>';
+    return;
+  }
+  
+  urgentCases.forEach(function(c) {
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td><strong>' + c.name + '</strong></td>' +
+                   '<td>' + c.age + '</td>' +
+                   '<td>' + c.village + '</td>' +
+                   '<td><span class="badge-risk high">เสี่ยงสูง</span></td>' +
+                   '<td><strong style="color:var(--accent-red)">' + c.hct + '%</strong></td>' +
+                   '<td><span style="color:var(--accent-amber); font-weight:600;">' + c.nutrition + '</span></td>';
+    tr.style.cursor = 'pointer';
+    tr.onclick = function() { window.showChildDetail(c.id); };
+    tbodyUrgent.appendChild(tr);
+  });
+};
+
+window.renderRiskList = function() {
+  var highList = document.getElementById('risk-high-list');
+  var midList = document.getElementById('risk-mid-list');
+  var lowList = document.getElementById('risk-low-list');
+  if (!highList || !midList || !lowList) { return; }
+  
+  highList.innerHTML = '';
+  midList.innerHTML = '';
+  lowList.innerHTML = '';
+  
+  var high = allChildren.filter(function(c) { return c.status === "เสี่ยงสูง"; });
+  var mid = allChildren.filter(function(c) { return c.status === "เสี่ยงปานกลาง"; });
+  var low = allChildren.filter(function(c) { return c.status === "เสี่ยงต่ำ"; });
+  
+  if (high.length === 0) { highList.innerHTML = '<div class="empty-state" style="padding:16px;"><p>ไม่มีเด็กกลุ่มเสี่ยงสูง</p></div>'; }
+  if (mid.length === 0) { midList.innerHTML = '<div class="empty-state" style="padding:16px;"><p>ไม่มีเด็กกลุ่มเสี่ยงปานกลาง</p></div>'; }
+  if (low.length === 0) { lowList.innerHTML = '<div class="empty-state" style="padding:16px;"><p>ไม่มีเด็กกลุ่มเสี่ยงต่ำ</p></div>'; }
+  
+  high.forEach(function(c) { highList.appendChild(window.createRiskItem(c)); });
+  mid.forEach(function(c) { midList.appendChild(window.createRiskItem(c)); });
+  low.forEach(function(c) { lowList.appendChild(window.createRiskItem(c)); });
+};
+
+window.createRiskItem = function(c) {
+  var card = document.createElement('div');
+  card.className = 'risk-item-card';
+  card.onclick = function() { window.showChildDetail(c.id); };
+  card.innerHTML = '<div><div class="risk-item-name">' + c.name + '</div>' +
+                   '<div class="risk-item-sub">' + c.village + ' · Hct: ' + (c.hct ? c.hct + '%' : '-') + '</div></div>' +
+                   '<i class="fas fa-chevron-right" style="color:var(--text-muted);font-size:12px;"></i>';
+  return card;
+};
+
+window.renderNutritionTable = function() {
+  var tbody = document.getElementById('tbody-nutrition');
+  if (!tbody) { return; }
+  tbody.innerHTML = '';
+  
+  if (allChildren.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><i class="fas fa-folder-open"></i><p>ไม่พบข้อมูลโภชนาการ</p></td></tr>';
+    return;
+  }
+  
+  allChildren.forEach(function(c) {
+    var nutritionColor = 'var(--text-primary)';
+    if (c.nutrition === 'ผอม') { nutritionColor = 'var(--accent-red)'; }
+    else if (c.nutrition === 'ค่อนข้างผอม') { nutritionColor = 'var(--accent-amber)'; }
+    else if (c.nutrition === 'สมส่วน') { nutritionColor = 'var(--accent-teal)'; }
+    
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td><strong>' + c.name + '</strong></td>' +
+                   '<td>' + c.age + '</td>' +
+                   '<td>' + (c.weight || '-') + '</td>' +
+                   '<td>' + (c.height || '-') + '</td>' +
+                   '<td><span style="color:' + nutritionColor + '; font-weight:600;">' + (c.nutrition || '-') + '</span></td>';
+    tbody.appendChild(tr);
+  });
+};
+
+window.renderIronTable = function() {
+  var total = allChildren.length;
+  var ironGot = allChildren.filter(function(c) { return c.iron === "สม่ำเสมอ" || c.iron === "ได้" || c.iron === "ไม่สม่ำเสมอ"; }).length;
+  var ironNotGot = allChildren.filter(function(c) { return c.iron === "ไม่เคยได้รับ" || c.iron === "ไม่ได้" || !c.iron; }).length;
+  var ironPct = total ? Math.round((ironGot / total) * 100) : 0;
+  
+  if (document.getElementById('iron-got')) { document.getElementById('iron-got').textContent = ironGot; }
+  if (document.getElementById('iron-notgot')) { document.getElementById('iron-notgot').textContent = ironNotGot; }
+  if (document.getElementById('iron-coverage')) { document.getElementById('iron-coverage').textContent = ironPct + "%"; }
+  
+  var tbody = document.getElementById('tbody-iron');
+  if (!tbody) { return; }
+  tbody.innerHTML = '';
+  
+  if (allChildren.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><i class="fas fa-folder-open"></i><p>ไม่พบข้อมูลยาธาตุเหล็ก</p></td></tr>';
+    return;
+  }
+  
+  allChildren.forEach(function(c) {
+    var ironBadge = '<span class="badge-risk high"><i class="fas fa-times-circle"></i> ไม่เคยได้รับยาเสริมธาตุเหล็กเลย</span>';
+    if (c.iron === "สม่ำเสมอ" || c.iron === "ได้") {
+      ironBadge = '<span class="badge-risk low"><i class="fas fa-check-circle"></i> ได้รับและกินสม่ำเสมอ</span>';
+    } else if (c.iron === "ไม่สม่ำเสมอ") {
+      ironBadge = '<span class="badge-risk mid"><i class="fas fa-exclamation-circle"></i> ได้รับแต่กินไม่สม่ำเสมอ &lt; 5 วัน/สัปดาห์</span>';
+    } else if (c.iron === "ได้รับยาแต่ไม่ได้กินยา") {
+      ironBadge = '<span class="badge-risk high"><i class="fas fa-exclamation-circle"></i> ได้รับยาแต่ไม่ได้กินยา</span>';
+    }
+      
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td><strong>' + c.name + '</strong></td>' +
+                   '<td>' + c.age + '</td>' +
+                   '<td>' + c.village + '</td>' +
+                   '<td>' + (c.guardian || '-') + '</td>' +
+                   '<td>' + ironBadge + '</td>' +
+                   '<td><strong style="color:var(--accent-blue)">' + (c.hct ? c.hct + '%' : '-') + '</strong></td>' +
+                   '<td>' +
+                     '<button class="btn btn-primary btn-sm" onclick="window.openMedicineLogModal(\'' + c.id + '\', \'' + c.name.replace(/'/g, "\\'") + '\')" style="padding: 4px 8px; font-size: 11.5px;">' +
+                       '<i class="fas fa-pills"></i> บันทึกกินยา' +
+                     '</button>' +
+                   '</td>';
+    tbody.appendChild(tr);
+  });
+};
+
+window.renderVillageList = function() {
+  var container = document.getElementById('village-grid');
+  if (!container) { return; }
+  container.innerHTML = '';
+  
+  var villages = {};
+  allChildren.forEach(function(c) {
+    if (c.village) { villages[c.village] = (villages[c.village] || 0) + 1; }
+  });
+  
+  var vKeys = Object.keys(villages);
+  if (vKeys.length === 0) {
+    container.innerHTML = '<div class="empty-state"><p>ไม่พบข้อมูลหมู่บ้าน</p></div>';
+    return;
+  }
+  
+  vKeys.forEach(function(v) {
+    var card = document.createElement('div');
+    card.className = 'village-card';
+    card.onclick = function() {
+      document.getElementById('filter-village').value = v;
+      window.navigate('children');
+      window.applyFilters();
+    };
+    card.innerHTML = '<div class="vc-name">' + v + '</div>' +
+                     '<div class="vc-count">' + villages[v] + ' <span style="font-size:14px;font-weight:normal;">คน</span></div>' +
+                     '<div class="vc-label">จำนวนเด็กในความรับผิดชอบ</div>';
+    container.appendChild(card);
+  });
+};
+
+window.renderActivityLog = function() {
+  var tbody = document.getElementById('tbody-log');
+  if (!tbody) { return; }
+  tbody.innerHTML = '';
+  
+  if (activities.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" class="empty-state"><i class="fas fa-folder-open"></i><p>ไม่พบประวัติกิจกรรม</p></td></tr>';
+    return;
+  }
+  
+  activities.forEach(function(log) {
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td style="white-space:nowrap;">' + log.timestamp + '</td>' +
+                   '<td style="color:var(--accent-teal)">' + log.user + '</td>' +
+                   '<td><strong>' + log.action + '</strong></td>' +
+                   '<td>' + log.details + '</td>';
+    tbody.appendChild(tr);
+  });
+};
+
+// -- CHARTS ---------------------------------------------------
+
+window.getGridColor = function() {
+  var isDark = document.body.getAttribute('data-theme') === 'dark';
+  return isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
+};
+
+window.getTextColor = function() {
+  var isDark = document.body.getAttribute('data-theme') === 'dark';
+  return isDark ? '#8eafc0' : '#64748b';
+};
+
+window.renderDashboardCharts = function() {
+  var high = allChildren.filter(function(c) { return c.status === "เสี่ยงสูง"; }).length;
+  var mid = allChildren.filter(function(c) { return c.status === "เสี่ยงปานกลาง"; }).length;
+  var low = allChildren.filter(function(c) { return c.status === "เสี่ยงต่ำ"; }).length;
+  
+  if (charts.risk) { charts.risk.destroy(); }
+  charts.risk = new Chart(document.getElementById('chart-risk'), {
+    type: 'doughnut',
+    data: {
+      labels: ['เสี่ยงสูง', 'เสี่ยงปานกลาง', 'เสี่ยงต่ำ'],
+      datasets: [{
+        data: [high, mid, low],
+        backgroundColor: ['#ff5e6c', '#f5a623', '#00c9a7'],
+        borderWidth: 0
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { color: window.getTextColor(), font: { family: 'Sarabun' } } }
+      }
+    }
+  });
+
+  var nutritionCounts = { 'สมส่วน': 0, 'ค่อนข้างผอม': 0, 'ผอม': 0, 'เริ่มอ้วน': 0, 'อ้วน': 0 };
+  allChildren.forEach(function(c) {
+    if (nutritionCounts[c.nutrition] !== undefined) { nutritionCounts[c.nutrition]++; }
+  });
+  
+  if (charts.nutrition) { charts.nutrition.destroy(); }
+  charts.nutrition = new Chart(document.getElementById('chart-nutrition'), {
+    type: 'pie',
+    data: {
+      labels: Object.keys(nutritionCounts),
+      datasets: [{
+        data: Object.values(nutritionCounts),
+        backgroundColor: ['#00c9a7', '#f5a623', '#ff5e6c', '#a78bfa', '#3e9eff'],
+        borderWidth: 0
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { color: window.getTextColor(), font: { family: 'Sarabun' } } }
+      }
+    }
+  });
+
+  var villagesSet = {};
+  allChildren.forEach(function(c) {
+    if (c.village) { villagesSet[c.village] = (villagesSet[c.village] || 0) + 1; }
+  });
+  
+  if (charts.village) { charts.village.destroy(); }
+  charts.village = new Chart(document.getElementById('chart-village'), {
+    type: 'bar',
+    data: {
+      labels: Object.keys(villagesSet),
+      datasets: [{
+        label: 'จำนวนเด็ก (คน)',
+        data: Object.values(villagesSet),
+        backgroundColor: 'rgba(62, 158, 255, 0.8)',
+        borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: window.getGridColor() }, ticks: { color: window.getTextColor(), font: { family: 'Sarabun' } } },
+        y: { grid: { color: window.getGridColor() }, ticks: { color: window.getTextColor(), font: { family: 'Sarabun' }, stepSize: 1 } }
+      }
+    }
+  });
+
+  var agesSet = { '9 เดือน': 0, '1 ปี': 0, '2 ปี': 0, '3 ปี': 0, '4 ปี': 0, '5 ปี': 0 };
+  allChildren.forEach(function(c) {
+    if (agesSet[c.age] !== undefined) { agesSet[c.age]++; }
+  });
+  
+  if (charts.age) { charts.age.destroy(); }
+  charts.age = new Chart(document.getElementById('chart-age'), {
+    type: 'bar',
+    data: {
+      labels: Object.keys(agesSet),
+      datasets: [{
+        label: 'จำนวนเด็ก (คน)',
+        data: Object.values(agesSet),
+        backgroundColor: 'rgba(167, 139, 250, 0.8)',
+        borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: window.getGridColor() }, ticks: { color: window.getTextColor(), font: { family: 'Sarabun' } } },
+        y: { grid: { color: window.getGridColor() }, ticks: { color: window.getTextColor(), font: { family: 'Sarabun' }, stepSize: 1 } }
+      }
+    }
+  });
+};
+
+window.renderRiskCharts = function() {
+  var activeChildren = allChildren.filter(function(c) { return c.hct > 0; });
+  var labels = activeChildren.map(function(c) { return c.name; });
+  var hcts = activeChildren.map(function(c) { return c.hct; });
+  var colors = activeChildren.map(function(c) { return c.hct < 33 ? '#ff5e6c' : (c.hct <= 35 ? '#f5a623' : '#00c9a7'); });
+  
+  if (charts.hctBar) { charts.hctBar.destroy(); }
+  charts.hctBar = new Chart(document.getElementById('chart-hct-bar'), {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Hct (%)',
+        data: hcts,
+        backgroundColor: colors,
+        borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: { grid: { color: window.getGridColor() }, ticks: { color: window.getTextColor(), font: { family: 'Sarabun', size: 10 } } },
+        y: { min: 20, max: 45, grid: { color: window.getGridColor() }, ticks: { color: window.getTextColor(), font: { family: 'Sarabun' } } }
+      }
+    }
+  });
+};
+
+window.renderNutritionCharts = function() {
+  var nutritionCounts = { 'สมส่วน': 0, 'ค่อนข้างผอม': 0, 'ผอม': 0, 'เริ่มอ้วน': 0, 'อ้วน': 0 };
+  allChildren.forEach(function(c) {
+    if (nutritionCounts[c.nutrition] !== undefined) { nutritionCounts[c.nutrition]++; }
+  });
+  
+  if (charts.nutritionDetail) { charts.nutritionDetail.destroy(); }
+  charts.nutritionDetail = new Chart(document.getElementById('chart-nutrition-detail'), {
+    type: 'pie',
+    data: {
+      labels: Object.keys(nutritionCounts),
+      datasets: [{
+        data: Object.values(nutritionCounts),
+        backgroundColor: ['#00c9a7', '#f5a623', '#ff5e6c', '#a78bfa', '#3e9eff'],
+        borderWidth: 0
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { color: window.getTextColor(), font: { family: 'Sarabun' } } }
+      }
+    }
+  });
+
+  var weightChildren = allChildren.filter(function(c) { return c.weight > 0; });
+  var labels = weightChildren.map(function(c) { return c.name; });
+  var weights = weightChildren.map(function(c) { return c.weight; });
+  
+  if (charts.weight) { charts.weight.destroy(); }
+  charts.weight = new Chart(document.getElementById('chart-weight'), {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'น้ำหนัก (กก.)',
+        data: weights,
+        backgroundColor: 'rgba(0, 201, 167, 0.7)',
+        borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: { grid: { color: window.getGridColor() }, ticks: { color: window.getTextColor(), font: { family: 'Sarabun', size: 10 } } },
+        y: { grid: { color: window.getGridColor() }, ticks: { color: window.getTextColor(), font: { family: 'Sarabun' } } }
+      }
+    }
+  });
+};
+
+// -- MAP & NAVIGATION -----------------------------------------
+
+window.loadMap = function() {
+  var mapLoading = document.getElementById('map-loading');
+  if (mapLoading) { mapLoading.style.display = 'none'; }
+  
+  var mapFrame = document.getElementById('map-frame');
+  if (mapFrame) {
+    var googleMapUrl = "https://www.google.com/maps/d/embed?mid=12gfM7cWidzJQRfA5yXoz16Tj78-0Dfg&ll=13.450266192790611%2C102.29263650000001&z=13";
+    mapFrame.src = googleMapUrl;
+  }
+  window.showToast("แผนที่ชุมชนโหลดสำเร็จ 🗺️", "info");
+};
+
+window.toggleSidebar = function() {
+  document.getElementById('sidebar').classList.add('open');
+  document.getElementById('sidebar-overlay').classList.add('show');
+};
+window.closeSidebar = function() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebar-overlay').classList.remove('show');
+};
+
+window.toggleSidebarCollapse = function() {
+  var sidebar = document.getElementById('sidebar');
+  var main = document.getElementById('main');
+  var icon = document.getElementById('collapse-icon');
+  
+  sidebar.classList.toggle('collapsed');
+  main.classList.toggle('expanded');
+  
+  if (sidebar.classList.contains('collapsed')) { icon.className = 'fas fa-chevron-right'; }
+  else { icon.className = 'fas fa-chevron-left'; }
+  
+  setTimeout(function() {
+    if (document.getElementById('page-dashboard').classList.contains('active')) { window.renderDashboardCharts(); }
+    else if (document.getElementById('page-risk').classList.contains('active')) { window.renderRiskCharts(); }
+    else if (document.getElementById('page-nutrition').classList.contains('active')) { window.renderNutritionCharts(); }
+  }, 310);
+};
+
+window.toggleTheme = function() {
+  var currentTheme = document.body.getAttribute('data-theme');
+  var targetTheme = currentTheme === 'dark' ? 'light' : 'dark';
+  document.body.setAttribute('data-theme', targetTheme);
+  
+  var icon = document.querySelector('#theme-toggle i');
+  if (targetTheme === 'dark') { icon.className = 'fas fa-sun'; }
+  else { icon.className = 'fas fa-moon'; }
+  
+  if (document.getElementById('page-dashboard').classList.contains('active')) { window.renderDashboardCharts(); }
+  else if (document.getElementById('page-risk').classList.contains('active')) { window.renderRiskCharts(); }
+  else if (document.getElementById('page-nutrition').classList.contains('active')) { window.renderNutritionCharts(); }
+};
+
+// -- MODALS & DETAILS -----------------------------------------
+
+window.closeModal = function(modalId) {
+  document.getElementById(modalId).classList.remove('open');
+  if (modalId === 'modal-confirm') { selectedChild = null; }
+};
+
+window.showChildDetail = function(id) {
+  var child = allChildren.filter(function(c) { return c.id === id; })[0];
+  if (!child) { return; }
+  selectedChild = child;
+  
+  var riskClass = child.status === "เสี่ยงสูง" ? "high" : child.status === "เสี่ยงปานกลาง" ? "mid" : "low";
+  var hctClass = child.hct && child.hct < 33 ? "low" : "normal";
+  var hctStatusText = child.hct && child.hct < 33 ? "ภาวะซีด (Anemia)" : "ฮีมาโตคริตปกติ";
+  
+  var modalBody = document.getElementById('modal-detail-body');
+  modalBody.innerHTML = '<div class="hct-indicator ' + hctClass + '">' +
+                        '<i class="fas fa-tint"></i>' +
+                        '<span>ผลตรวจเลือด Hct: ' + (child.hct ? child.hct + '%' : '-') + ' (' + hctStatusText + ')</span></div>' +
+                        '<div style="margin-top:14px;">' +
+                        '<div class="detail-row"><span class="detail-label">ชื่อเด็ก</span><span class="detail-value">' + child.name + '</span></div>' +
+                        '<div class="detail-row"><span class="detail-label">อายุ</span><span class="detail-value">' + child.age + '</span></div>' +
+                        '<div class="detail-row"><span class="detail-label">บ้านเลขที่</span><span class="detail-value">' + (child.house || '-') + '</span></div>' +
+                        '<div class="detail-row"><span class="detail-label">หมู่</span><span class="detail-value">' + (child.moo || '-') + '</span></div>' +
+                        '<div class="detail-row"><span class="detail-label">หมู่บ้าน</span><span class="detail-value">' + (child.village || '-') + '</span></div>' +
+                        '<div class="detail-row"><span class="detail-label">ระดับความเสี่ยง</span><span class="detail-value"><span class="badge-risk ' + riskClass + '">' + child.status + '</span></span></div>' +
+                        '<div class="detail-row"><span class="detail-label">พิกัดแผนที่</span><span class="detail-value">' + (child.lat && child.lng ? child.lat + ', ' + child.lng : 'ไม่ได้ระบุ') + '</span></div>' +
+                        '<div class="detail-row"><span class="detail-label">น้ำหนัก</span><span class="detail-value">' + (child.weight ? child.weight + ' กก.' : '-') + '</span></div>' +
+                        '<div class="detail-row"><span class="detail-label">ส่วนสูง</span><span class="detail-value">' + (child.height ? child.height + ' ซม.' : '-') + '</span></div>' +
+                        '<div class="detail-row"><span class="detail-label">โภชนาการ</span><span class="detail-value">' + (child.nutrition || '-') + '</span></div>' +
+                        '<div class="detail-row"><span class="detail-label">กินยาเสริมธาตุเหล็ก</span><span class="detail-value">' + (child.iron || '-') + '</span></div>' +
+                        '<div class="detail-row"><span class="detail-label">กินอาหารเหล็กสูง</span><span class="detail-value">' + (child.food || '-') + '</span></div>' +
+                        '<div class="detail-row"><span class="detail-label">สังคมเศรษฐกิจครอบครัว</span><span class="detail-value">' + (child.social || '-') + '</span></div>' +
+                        '<div class="detail-row"><span class="detail-label">กินยาล่าสุด</span><span class="detail-value">' + child.lastDate + '</span></div>' +
+                        '<div class="detail-row"><span class="detail-label">ผู้ดูแลเด็ก</span><span class="detail-value">' + (child.guardian || '-') + '</span></div>' +
+                        '<div class="detail-row"><span class="detail-label">หมายเหตุ</span><span class="detail-value" style="white-space:pre-wrap;">' + (child.notes || '-') + '</span></div></div>';
+  
+  document.getElementById('modal-detail').classList.add('open');
+};
+
+// -- CRUD OPERATIONS ------------------------------------------
+
+window.resetForm = function() {
+  document.getElementById('edit-child-id').value = '';
+  document.getElementById('f-name').value = '';
+  document.getElementById('f-age').value = '4 ปี';
+  document.getElementById('f-province').value = 'สระแก้ว';
+  document.getElementById('f-amphoe').value = 'คลองหาด';
+  document.getElementById('f-amphoe').dispatchEvent(new Event('change'));
+  document.getElementById('f-tambon').value = 'คลองหาด';
+  document.getElementById('f-tambon').dispatchEvent(new Event('change'));
+  document.getElementById('f-house').value = '';
+  document.getElementById('f-moo').value = '';
+  document.getElementById('f-village-text').value = '';
+  document.getElementById('f-lat').value = '';
+  document.getElementById('f-lng').value = '';
+  document.getElementById('f-hct').value = '';
+  document.getElementById('f-weight').value = '';
+  document.getElementById('f-height').value = '';
+  document.getElementById('f-nutrition').selectedIndex = 0;
+  document.getElementById('f-iron').selectedIndex = 0;
+  document.getElementById('f-food').selectedIndex = 0;
+  document.getElementById('f-social').selectedIndex = 0;
+  document.getElementById('f-guardian').value = '';
+  document.getElementById('f-notes').value = '';
+  
+  document.getElementById('add-page-title').textContent = "เพิ่มข้อมูลเด็ก";
+  document.getElementById('save-btn').innerHTML = '<i class="fas fa-save"></i> บันทึก';
+  selectedChild = null;
+};
+
+window.editChild = function(id) {
+  var child = allChildren.filter(function(c) { return c.id === id; })[0];
+  if (!child) { return; }
+  selectedChild = child;
+  
+  document.getElementById('edit-child-id').value = child.id;
+  document.getElementById('f-name').value = child.name;
+  document.getElementById('f-age').value = child.age;
+  document.getElementById('f-province').value = child.province || 'สระแก้ว';
+  
+  var amphoeVal = child.amphoe || 'คลองหาด';
+  var tambonVal = child.tambon || 'คลองหาด';
+  
+  document.getElementById('f-amphoe').value = amphoeVal;
+  document.getElementById('f-amphoe').dispatchEvent(new Event('change'));
+  document.getElementById('f-tambon').value = tambonVal;
+  document.getElementById('f-tambon').dispatchEvent(new Event('change'));
+  
+  document.getElementById('f-house').value = child.house;
+  document.getElementById('f-moo').value = child.moo;
+  
+  if (tambonVal === 'คลองหาด') {
+    var rawVal = child.village + "|" + String(child.moo).replace(/\.0$/, '');
+    document.getElementById('f-village-select').value = rawVal;
+    document.getElementById('f-village-select').dispatchEvent(new Event('change'));
+  } else {
+    document.getElementById('f-village-text').value = child.village;
+  }
+  
+  document.getElementById('f-lat').value = child.lat || '';
+  document.getElementById('f-lng').value = child.lng || '';
+  document.getElementById('f-hct').value = child.hct || '';
+  document.getElementById('f-weight').value = child.weight || '';
+  document.getElementById('f-height').value = child.height || '';
+  document.getElementById('f-nutrition').value = child.nutrition;
+  document.getElementById('f-iron').value = child.iron || 'สม่ำเสมอ';
+  document.getElementById('f-food').value = child.food || 'เป็นประจำ';
+  document.getElementById('f-social').value = child.social || 'เพียงพอ';
+  document.getElementById('f-guardian').value = child.guardian;
+  document.getElementById('f-notes').value = child.notes || '';
+  
+  document.getElementById('add-page-title').textContent = "แก้ไขข้อมูลเด็ก";
+  document.getElementById('save-btn').innerHTML = '<i class="fas fa-save"></i> อัปเดตข้อมูล';
+  
+  window.navigate('add');
+};
+
+window.editFromDetail = function() {
+  if (!selectedChild) { return; }
+  var childId = selectedChild.id;
+  window.closeModal('modal-detail');
+  window.editChild(childId);
+};
+
+window.deleteChild = function(id) {
+  var child = allChildren.filter(function(c) { return c.id === id; })[0];
+  if (!child) { return; }
+  selectedChild = child;
+  document.getElementById('confirm-name').textContent = child.name;
+  
+  var confirmBtn = document.getElementById('confirm-delete-btn');
+  confirmBtn.onclick = function() { window.confirmDelete(child.id); };
+  document.getElementById('modal-confirm').classList.add('open');
+};
+
+window.deleteFromDetail = function() {
+  if (!selectedChild) { return; }
+  var childId = selectedChild.id;
+  window.closeModal('modal-detail');
+  window.deleteChild(childId);
+};
+
+window.confirmDelete = function(id) {
+  window.closeModal('modal-confirm');
+  window.showLoading(true, "กำลังลบข้อมูลเด็กออกจากฐานข้อมูล...");
+  
+  if (isGAS) {
+    google.script.run
+      .withSuccessHandler(function(res) {
+        window.showLoading(false);
+        if (res.success) {
+          window.showToast("ลบข้อมูลเด็กเรียบร้อยแล้ว 🗑️");
+          window.refreshData();
+        } else {
+          window.showToast("ลบข้อมูลไม่สำเร็จ", "error");
+        }
+      })
+      .withFailureHandler(function(err) {
+        window.showLoading(false);
+        window.showToast("เกิดข้อผิดพลาดในการลบ: " + err, "error");
+      })
+      .deleteChild(id, currentUser ? (currentUser.email || currentUser.name) : 'unknown');
+  } else {
+    setTimeout(function() {
+      var localChildren = JSON.parse(safeStorage.getItem("iron_zero_children"));
+      var cIndex = -1;
+      for (var i = 0; i < localChildren.length; i++) {
+        if (localChildren[i].id === id) { cIndex = i; break; }
+      }
+      var childObj = localChildren[cIndex];
+      localChildren.splice(cIndex, 1);
+      safeStorage.setItem("iron_zero_children", JSON.stringify(localChildren));
+      
+      var localLogs = JSON.parse(safeStorage.getItem("iron_zero_logs"));
+      localLogs.unshift({
+        timestamp: new Date().toLocaleString(),
+        user: currentUser ? (currentUser.email || currentUser.name) : "local-user@example.com",
+        action: "ลบข้อมูลเด็ก",
+        details: "ทำการลบ (Soft Delete) เด็ก ID: " + id + " ชื่อ: " + childObj.name
+      });
+      safeStorage.setItem("iron_zero_logs", JSON.stringify(localLogs));
+      
+      window.showLoading(false);
+      window.showToast("ลบข้อมูลจำลองเรียบร้อยแล้ว 🗑️", "info");
+      window.refreshData();
+    }, 600);
+  }
+};
+
+window.saveChild = function() {
+  var name = document.getElementById('f-name').value.trim();
+  if (!name) {
+    window.showToast("กรุณากรอกชื่อเด็กด้วยครับ", "error");
+    return;
+  }
+  
+  var id = document.getElementById('edit-child-id').value;
+  var age = document.getElementById('f-age').value;
+  var province = document.getElementById('f-province').value;
+  var amphoe = document.getElementById('f-amphoe').value;
+  var tambon = document.getElementById('f-tambon').value;
+  var house = document.getElementById('f-house').value.trim();
+  var moo = document.getElementById('f-moo').value.trim();
+  
+  var village = "";
+  if (tambon === 'คลองหาด') {
+    var rawVal = document.getElementById('f-village-select').value;
+    village = rawVal ? rawVal.split('|')[0] : "";
+  } else {
+    village = document.getElementById('f-village-text').value.trim();
+  }
+
+  var lat = document.getElementById('f-lat').value ? parseFloat(document.getElementById('f-lat').value) : null;
+  var lng = document.getElementById('f-lng').value ? parseFloat(document.getElementById('f-lng').value) : null;
+  var hct = document.getElementById('f-hct').value ? parseFloat(document.getElementById('f-hct').value) : null;
+  var weight = document.getElementById('f-weight').value ? parseFloat(document.getElementById('f-weight').value) : null;
+  var height = document.getElementById('f-height').value ? parseFloat(document.getElementById('f-height').value) : null;
+  var nutrition = document.getElementById('f-nutrition').value;
+  var iron = document.getElementById('f-iron').value;
+  var food = document.getElementById('f-food').value;
+  var social = document.getElementById('f-social').value;
+  var guardian = document.getElementById('f-guardian').value.trim();
+  var notes = document.getElementById('f-notes').value.trim();
+  
+  var data = {
+    id: id || null,
+    name: name,
+    age: age,
+    province: province,
+    amphoe: amphoe,
+    tambon: tambon,
+    house: house,
+    moo: moo,
+    village: village,
+    lat: lat,
+    lng: lng,
+    hct: hct,
+    weight: weight,
+    height: height,
+    nutrition: nutrition,
+    iron: iron,
+    food: food,
+    social: social,
+    guardian: guardian,
+    notes: notes
+  };
+  
+  window.showLoading(true, "กำลังบันทึกข้อมูลเข้าระบบ...");
+  
+  if (isGAS) {
+    google.script.run
+      .withSuccessHandler(function(res) {
+        window.showLoading(false);
+        if (res.success) {
+          window.showToast("บันทึกข้อมูลเด็กเรียบร้อยแล้ว ✅");
+          window.resetForm();
+          window.navigate('children');
+          window.refreshData();
+        } else {
+          window.showToast("บันทึกไม่สำเร็จ", "error");
+        }
+      })
+      .withFailureHandler(function(err) {
+        window.showLoading(false);
+        window.showToast("เกิดข้อผิดพลาดในการบันทึก: " + err, "error");
+      })
+      .saveChild(data, currentUser ? (currentUser.email || currentUser.name) : 'unknown');
+  } else {
+    setTimeout(function() {
+      var localChildren = JSON.parse(safeStorage.getItem("iron_zero_children")) || [];
+      var newId = id || ("CHILD_" + new Date().getTime());
+      
+      var hctScore = 0;
+      if (hct > 0) {
+        if (hct < 30) { hctScore = 2; }
+        else if (hct <= 32.9) { hctScore = 1; }
+      }
+      var nutrScore = 0;
+      if (nutrition === 'ผอม') { nutrScore = 2; }
+      else if (nutrition === 'ค่อนข้างผอม') { nutrScore = 1; }
+      
+      var ironScore = (iron === 'ไม่เคยได้รับ' || iron === 'ได้รับยาแต่ไม่ได้กินยา' || iron === 'ไม่ได้') ? 2 : (iron === 'ไม่สม่ำเสมอ' ? 1 : 0);
+      var foodScore = food === 'ไม่ได้บริโภค' ? 2 : (food === 'บางครั้ง' ? 1 : 0);
+      var socialScore = social === 'ไม่เพียงพอ' ? 2 : (social === 'ขัดสน' ? 1 : 0);
+      
+      var score = hctScore + nutrScore + ironScore + foodScore + socialScore;
+      var status = "เสี่ยงต่ำ";
+      if (score >= 4) { status = "เสี่ยงสูง"; }
+      else if (score >= 2) { status = "เสี่ยงปานกลาง"; }
+      
+      var childRecord = JSON.parse(JSON.stringify(data));
+      childRecord.id = newId;
+      childRecord.status = status;
+      childRecord.lastDate = id ? (allChildren.filter(function(c) { return c.id === id; })[0].lastDate || "-") : "-";
+      
+      if (id) {
+        var idx = -1;
+        for (var i = 0; i < localChildren.length; i++) {
+          if (localChildren[i].id === id) { idx = i; break; }
+        }
+        localChildren[idx] = childRecord;
+      } else {
+        localChildren.push(childRecord);
+      }
+      
+      safeStorage.setItem("iron_zero_children", JSON.stringify(localChildren));
+      
+      var localLogs = JSON.parse(safeStorage.getItem("iron_zero_logs")) || [];
+      localLogs.unshift({
+        timestamp: new Date().toLocaleString(),
+        user: currentUser ? (currentUser.email || currentUser.name) : "local-user@example.com",
+        action: id ? "แก้ไขข้อมูลเด็ก" : "เพิ่มข้อมูลเด็ก",
+        details: (id ? "แก้ไข" : "เพิ่ม") + "เด็ก: " + name + " (สถานะ: " + status + ")"
+      });
+      safeStorage.setItem("iron_zero_logs", JSON.stringify(localLogs));
+      
+      window.showLoading(false);
+      window.showToast("บันทึกข้อมูลจำลองสำเร็จ ✅", "info");
+      window.resetForm();
+      window.navigate('children');
+      window.refreshData();
+    }, 600);
+  }
+};
+
+// -- EXPORT & IMPORT ------------------------------------------
+
+window.exportCSV = function() {
+  if (allChildren.length === 0) {
+    window.showToast("ไม่มีข้อมูลให้ออกรายงาน", "error");
+    return;
+  }
+  
+  var headers = ["ID", "ชื่อเด็ก", "อายุ", "บ้านเลขที่", "หมู่", "หมู่บ้าน", "Hct (%)", "น้ำหนัก (กก.)", "ส่วนสูง (ซม.)", "โภชนาการ", "มิติที่ 3: ได้รับยาเหล็ก", "มิติที่ 4: การกินอาหารเหล็กสูง", "มิติที่ 5: สังคมเศรษฐกิจครอบครัว", "ผู้ดูแล", "ระดับความเสี่ยง"];
+  
+  var csvContent = "data:text/csv;charset=utf-8,\uFEFF"; 
+  csvContent += headers.join(",") + "\n";
+  
+  allChildren.forEach(function(c) {
+    var row = [
+      c.id,
+      '"' + c.name + '"',
+      '"' + c.age + '"',
+      '"' + c.house + '"',
+      '"' + c.moo + '"',
+      '"' + c.village + '"',
+      c.hct || "",
+      c.weight || "",
+      c.height || "",
+      '"' + c.nutrition + '"',
+      '"' + c.iron + '"',
+      '"' + (c.food || "") + '"',
+      '"' + (c.social || "") + '"',
+      '"' + c.guardian + '"',
+      '"' + c.status + '"'
+    ];
+    csvContent += row.join(",") + "\n";
+  });
+  
+  var encodedUri = encodeURI(csvContent);
+  var link = document.createElement("a");
+  link.setAttribute("href", encodedUri);
+  link.setAttribute("download", "IronZeroRiskExport_" + new Date().toISOString().slice(0,10) + ".csv");
+  document.body.appendChild(link);
+  
+  link.click();
+  document.body.removeChild(link);
+  
+  window.showToast("ส่งออกไฟล์ CSV สำเร็จ 📊");
+};
+
+window.triggerCSVImport = function() {
+  var fileInput = document.getElementById('csv-import-input');
+  if (fileInput) {
+    fileInput.value = ''; 
+    fileInput.click();
+  }
+};
+
+window.handleCSVImport = function(input) {
+  if (!input.files || input.files.length === 0) { return; }
+  var file = input.files[0];
+  var encoding = document.getElementById('import-encoding').value || 'UTF-8';
+
+  var reader = new FileReader();
+  window.showLoading(true, "กำลังอ่านไฟล์ CSV...");
+
+  reader.onload = function(e) {
+    var text = e.target.result;
+    try {
+      var csvRows = window.parseCSV(text);
+      if (csvRows.length < 2) {
+        window.showLoading(false);
+        window.showToast("ไฟล์ CSV ไม่มีข้อมูลเพียงพอหรือหัวตารางว่างเปล่า", "error");
+        return;
+      }
+
+      var headers = csvRows[0];
+      var dataRows = csvRows.slice(1);
+
+      var propMapping = headers.map(function(h) {
+        var cleanH = h.trim().replace(/^["']|["']$/g, '');
+        for (var prop in CSV_HEADER_MAP) {
+          if (CSV_HEADER_MAP[prop].indexOf(cleanH) !== -1) {
+            return prop;
+          }
+        }
+        return null;
+      });
+
+      var nameIndex = propMapping.indexOf('name');
+      if (nameIndex === -1) {
+        window.showLoading(false);
+        window.showToast("ไม่พบคอลัมน์ 'ชื่อเด็ก' ในไฟล์ CSV กรุณาตรวจสอบหัวตาราง", "error");
+        return;
+      }
+
+      var childrenToImport = [];
+      dataRows.forEach(function(row) {
+        if (row.length === 0 || (row.length === 1 && row[0].trim() === '')) { return; }
+
+        var child = {};
+        propMapping.forEach(function(prop, index) {
+          if (prop && index < row.length) {
+            var val = row[index].trim();
+            val = val.replace(/^["']|["']$/g, '');
+            if (prop === 'lat' || prop === 'lng' || prop === 'hct' || prop === 'weight' || prop === 'height') {
+              child[prop] = val !== '' ? Number(val) : null;
+            } else {
+              child[prop] = val;
+            }
+          }
+        });
+        
+        if (child.name) { childrenToImport.push(child); }
+      });
+
+      if (childrenToImport.length === 0) {
+        window.showLoading(false);
+        window.showToast("ไม่พบข้อมูลเด็กที่ถูกต้องในไฟล์ CSV", "error");
+        return;
+      }
+
+      window.showLoading(true, "กำลังนำเข้าข้อมูลเด็ก " + childrenToImport.length + " รายการ เข้าระบบ...");
+
+      if (isGAS) {
+        google.script.run
+          .withSuccessHandler(function(res) {
+            window.showLoading(false);
+            if (res.success) {
+              window.showToast("นำเข้าสำเร็จเรียบร้อย! 🎉 (เพิ่มใหม่ " + res.added + " คน, อัปเดต " + res.updated + " คน)");
+              window.refreshData();
+            } else {
+              window.showToast("เกิดข้อผิดพลาดในการนำเข้า: " + res.error, "error");
+            }
+          })
+          .withFailureHandler(function(err) {
+            window.showLoading(false);
+            window.showToast("ล้มเหลวในการเชื่อมต่อ Apps Script: " + err, "error");
+          })
+          .saveChildrenBatch(childrenToImport);
+      } else {
+        setTimeout(function() {
+          window.showLoading(false);
+          var localChildren = JSON.parse(safeStorage.getItem("iron_zero_children")) || [];
+          var added = 0;
+          var updated = 0;
+
+          childrenToImport.forEach(function(child) {
+            var existingIdx = -1;
+            if (child.id) {
+              for (var i = 0; i < localChildren.length; i++) {
+                if (localChildren[i].id === child.id) { existingIdx = i; break; }
+              }
+            } else if (child.name) {
+              var cName = child.name.trim();
+              for (var j = 0; j < localChildren.length; j++) {
+                if (localChildren[j].name.trim() === cName) { existingIdx = j; break; }
+              }
+            }
+
+            var mergedChild = {};
+            if (existingIdx !== -1) { mergedChild = JSON.parse(JSON.stringify(localChildren[existingIdx])); }
+
+            var fields = ["name", "age", "house", "moo", "village", "tambon", "amphoe", "province", "lat", "lng", "hct", "weight", "height", "nutrition", "iron", "food", "social", "guardian", "notes"];
+            fields.forEach(function(field) {
+              if (child[field] !== undefined && child[field] !== null && child[field] !== "") {
+                mergedChild[field] = child[field];
+              }
+            });
+
+            var hctVal = Number(mergedChild.hct) || 0;
+            var hctScore = 0;
+            if (hctVal > 0) {
+              if (hctVal < 30) { hctScore = 2; }
+              else if (hctVal <= 32.9) { hctScore = 1; }
+            }
+            var nutrScore = 0;
+            if (mergedChild.nutrition === "ผอม") { nutrScore = 2; }
+            else if (mergedChild.nutrition === "ค่อนข้างผอม") { nutrScore = 1; }
+
+            var ironVal = mergedChild.iron || 'สม่ำเสมอ';
+            var ironScore = (ironVal === "ไม่เคยได้รับ" || ironVal === "ไม่ได้" || ironVal === "ได้รับยาแต่ไม่ได้กินยา" || ironVal === "ได้แต่ไม่ได้กิน") ? 2 : (ironVal === "ไม่สม่ำเสมอ" ? 1 : 0);
+            var foodVal = mergedChild.food || 'เป็นประจำ';
+            var foodScore = foodVal === "ไม่ได้บริโภค" ? 2 : (foodVal === "บางครั้ง" ? 1 : 0);
+            var socialVal = mergedChild.social || 'เพียงพอ';
+            var socialScore = socialVal === "ไม่เพียงพอ" ? 2 : (socialVal === "ขัดสน" ? 1 : 0);
+
+            var totalScore = hctScore + nutrScore + ironScore + foodScore + socialScore;
+            var status = "เสี่ยงต่ำ";
+            if (totalScore >= 4) { status = "เสี่ยงสูง"; }
+            else if (totalScore >= 2) { status = "เสี่ยงปานกลาง"; }
+
+            var standardChild = {
+              id: mergedChild.id || "CHILD_" + new Date().getTime() + "_" + Math.floor(Math.random() * 1000),
+              name: mergedChild.name,
+              age: mergedChild.age || "4 ปี",
+              house: mergedChild.house || "",
+              moo: mergedChild.moo || "",
+              village: mergedChild.village || "บ้านคลองหาด",
+              tambon: mergedChild.tambon || "คลองหาด",
+              amphoe: mergedChild.amphoe || "คลองหาด",
+              province: mergedChild.province || "สระแก้ว",
+              lat: mergedChild.lat || 13.453589,
+              lng: mergedChild.lng || 102.299076,
+              hct: hctVal || null,
+              weight: mergedChild.weight || null,
+              height: mergedChild.height || null,
+              nutrition: mergedChild.nutrition || "สมส่วน",
+              iron: ironVal === 'ได้' ? 'สม่ำเสมอ' : (ironVal === 'ไม่ได้' ? 'ได้รับยาแต่ไม่ได้กินยา' : ironVal),
+              food: foodVal,
+              social: socialVal,
+              guardian: mergedChild.guardian || "",
+              totalScore: totalScore,
+              status: status,
+              lastDate: mergedChild.lastDate || "-",
+              notes: mergedChild.notes || ""
+            };
+
+            if (existingIdx !== -1) { localChildren[existingIdx] = standardChild; updated++; }
+            else { localChildren.push(standardChild); added++; }
+          });
+
+          safeStorage.setItem("iron_zero_children", JSON.stringify(localChildren));
+          var localLogs = JSON.parse(safeStorage.getItem("iron_zero_logs")) || [];
+          localLogs.unshift({
+            timestamp: new Date().toLocaleString('th-TH'),
+            user: "local-user@example.com",
+            action: "นำเข้าข้อมูลเด็ก (Batch)",
+            details: "นำเข้าข้อมูลเด็กปฐมวัยจำนวน " + childrenToImport.length + " คน (เพิ่มใหม่ " + added + ", อัปเดต " + updated + ")"
+          });
+          safeStorage.setItem("iron_zero_logs", JSON.stringify(localLogs));
+          window.showToast("นำเข้าสำเร็จ (Simulator) 🎉 เพิ่มใหม่: " + added + ", อัปเดต: " + updated);
+          window.refreshData();
+        }, 800);
+      }
+    } catch (err) {
+      window.showLoading(false);
+      window.showToast("เกิดข้อผิดพลาดในการนำเข้าไฟล์: " + err.message, "error");
+    }
+  };
+  reader.onerror = function() { window.showLoading(false); window.showToast("เกิดข้อผิดพลาดในการอ่านไฟล์ CSV", "error"); };
+  reader.readAsText(file, encoding);
+};
+
+window.parseCSV = function(text) {
+  var lines = [];
+  var row = [""];
+  var inQuotes = false;
+  for (var i = 0; i < text.length; i++) {
+    var c = text[i];
+    var next = text[i+1];
+    if (c === '"') {
+      if (inQuotes && next === '"') { row[row.length - 1] += '"'; i++; }
+      else { inQuotes = !inQuotes; }
+    } else if (c === ',' && !inQuotes) { row.push(''); }
+    else if ((c === '\r' || c === '\n') && !inQuotes) {
+      if (c === '\r' && next === '\n') { i++; }
+      lines.push(row); row = [''];
+    } else { row[row.length - 1] += c; }
+  }
+  if (row.length > 1 || row[0] !== '') { lines.push(row); }
+  return lines;
+};
+
+// -- ADDRESS & VHV HELPERS ------------------------------------
+
+window.initAddressCascading = function() {
+  var provinceSelect = document.getElementById('f-province');
+  var amphoeSelect = document.getElementById('f-amphoe');
+  var tambonSelect = document.getElementById('f-tambon');
+  var vSelectGroup = document.getElementById('f-village-select-group');
+  var vTextGroup = document.getElementById('f-village-text-group');
+  var vSelect = document.getElementById('f-village-select');
+  var vText = document.getElementById('f-village-text');
+  var mooInput = document.getElementById('f-moo');
+
+  if (!provinceSelect || !amphoeSelect || !tambonSelect) { return; }
+  provinceSelect.innerHTML = '<option value="สระแก้ว" selected>สระแก้ว</option>';
+
+  window.updateAmphoe = function() {
+    amphoeSelect.innerHTML = '';
+    SAKAEO_ADDRESS_DATA.districts.forEach(function(d) {
+      var opt = document.createElement('option');
+      opt.value = d.name;
+      opt.textContent = d.name;
+      if (d.name === 'คลองหาด') { opt.selected = true; }
+      amphoeSelect.appendChild(opt);
+    });
+    window.updateTambon();
+  };
+
+  window.updateTambon = function() {
+    var selectedAmphoeName = amphoeSelect.value;
+    var district = SAKAEO_ADDRESS_DATA.districts.filter(function(d) { return d.name === selectedAmphoeName; })[0];
+    tambonSelect.innerHTML = '';
+    if (district) {
+      district.sub_districts.forEach(function(sd) {
+        var opt = document.createElement('option');
+        opt.value = sd.name;
+        opt.textContent = sd.name;
+        if (sd.name === 'คลองหาด') { opt.selected = true; }
+        tambonSelect.appendChild(opt);
+      });
+    }
+    window.updateVillageView();
+  };
+
+  window.updateVillageView = function() {
+    var selectedTambon = tambonSelect.value;
+    if (selectedTambon === 'คลองหาด') {
+      vSelectGroup.style.display = 'block'; vTextGroup.style.display = 'none';
+      vSelect.innerHTML = '';
+      KHLONG_HAT_VILLAGES.forEach(function(v) {
+        var opt = document.createElement('option');
+        opt.value = v.name + "|" + v.moo;
+        opt.textContent = v.label;
+        vSelect.appendChild(opt);
+      });
+      if (KHLONG_HAT_VILLAGES.length > 0) { mooInput.value = KHLONG_HAT_VILLAGES[0].moo; }
+    } else {
+      vSelectGroup.style.display = 'none'; vTextGroup.style.display = 'block';
+      vText.value = ''; mooInput.value = '';
+    }
+  };
+
+  amphoeSelect.onchange = window.updateTambon;
+  tambonSelect.onchange = window.updateVillageView;
+  vSelect.onchange = function() {
+    var parts = vSelect.value.split('|');
+    if (parts.length === 2) { mooInput.value = parts[1]; }
+  };
+  window.updateAmphoe();
+};
+
+window.openMedicineLogModal = function(childId, childName) {
+  document.getElementById('f-med-child-id').value = childId;
+  document.getElementById('f-med-child-name').value = childName;
+  var today = new Date();
+  var dateStr = today.toISOString().split('T')[0];
+  document.getElementById('f-med-date').value = dateStr;
+  var timeStr = today.toTimeString().split(' ')[0].substring(0, 5);
+  document.getElementById('f-med-time').value = timeStr;
+  document.getElementById('f-med-taken').value = "กินยาแล้ว";
+  document.getElementById('f-med-notes').value = "";
+  var vhvInput = document.getElementById('f-med-vhv-id');
+  if (vhvInput) {
+    if (currentUser) {
+      vhvInput.value = currentUser.id; vhvInput.readOnly = true;
+      vhvInput.style.opacity = '0.8'; vhvInput.style.background = 'var(--bg-elevated)';
+    } else {
+      vhvInput.value = "AOR001"; vhvInput.readOnly = false;
+      vhvInput.style.opacity = '1'; vhvInput.style.background = '';
+    }
+  }
+  document.getElementById('modal-med').classList.add('open');
+};
+
+window.logMedicineFromDetail = function() {
+  if (!selectedChild) { return; }
+  var childId = selectedChild.id;
+  var childName = selectedChild.name;
+  window.closeModal('modal-detail');
+  window.openMedicineLogModal(childId, childName);
+};
+
+window.submitMedicineLog = function() {
+  var childId = document.getElementById('f-med-child-id').value;
+  var childName = document.getElementById('f-med-child-name').value;
+  var date = document.getElementById('f-med-date').value;
+  var time = document.getElementById('f-med-time').value;
+  var taken = document.getElementById('f-med-taken').value;
+  var vhvId = document.getElementById('f-med-vhv-id').value.trim();
+  var notes = document.getElementById('f-med-notes').value.trim();
+
+  if (!date || !time) { window.showToast("กรุณากรอกวันที่และเวลาด้วยครับ", "error"); return; }
+  var logData = { childId: childId, date: date, time: time, taken: taken, vhvId: vhvId || "AOR001", notes: notes };
+  window.showLoading(true, "กำลังบันทึกข้อมูลการกินยา...");
+
+  if (isGAS) {
+    google.script.run
+      .withSuccessHandler(function(res) {
+        window.showLoading(false);
+        if (res.success) { window.showToast("บันทึกการกินยาสำเร็จแล้ว ✅"); window.closeModal('modal-med'); window.refreshData(); }
+        else { window.showToast("บันทึกไม่สำเร็จ: " + res.error, "error"); }
+      })
+      .withFailureHandler(function(err) { window.showLoading(false); window.showToast("เกิดข้อผิดพลาด: " + err, "error"); })
+      .saveMedicineLog(logData, currentUser ? (currentUser.email || currentUser.name) : 'unknown');
+  } else {
+    setTimeout(function() {
+      window.showLoading(false);
+      var localMedLogs = JSON.parse(safeStorage.getItem("iron_zero_med_logs")) || [];
+      localMedLogs.unshift({ logId: "MED_" + new Date().getTime(), childId: childId, date: date, time: time, taken: taken, vhvId: vhvId, notes: notes });
+      safeStorage.setItem("iron_zero_med_logs", JSON.stringify(localMedLogs));
+      if (taken === "กินยาแล้ว") {
+        var localChildren = JSON.parse(safeStorage.getItem("iron_zero_children")) || [];
+        for (var i = 0; i < localChildren.length; i++) {
+          if (localChildren[i].id === childId) { localChildren[i].lastDate = date; break; }
+        }
+        safeStorage.setItem("iron_zero_children", JSON.stringify(localChildren));
+      }
+      var localLogs = JSON.parse(safeStorage.getItem("iron_zero_logs")) || [];
+      localLogs.unshift({ timestamp: new Date().toLocaleString('th-TH'), user: currentUser ? (currentUser.email || currentUser.name) : "local-user@example.com", action: "บันทึกเวลากินยา", details: "บันทึกการกินยาสำหรับเด็ก: " + childName + " สถานะ: " + taken });
+      safeStorage.setItem("iron_zero_logs", JSON.stringify(localLogs));
+      window.showToast("บันทึกการกินยาสำเร็จแล้ว (Simulator) ✅");
+      window.closeModal('modal-med');
+      window.refreshData();
+    }, 500);
+  }
+};
+
+// -- ASSESSMENT -----------------------------------------------
+
+window.loadChildForAssessment = function(childId) {
+  if (!childId) { window.resetAssessmentForm(); return; }
+  selectedAssessmentChild = allChildren.filter(function(c) { return c.id === childId; })[0];
+  if (!selectedAssessmentChild) { window.resetAssessmentForm(); return; }
+
+  document.getElementById('assess-sum-name').textContent = selectedAssessmentChild.name || '-';
+  document.getElementById('assess-sum-age').textContent = selectedAssessmentChild.age || '-';
+  document.getElementById('assess-sum-village').textContent = selectedAssessmentChild.village || '-';
+  document.getElementById('assess-sum-guardian').textContent = selectedAssessmentChild.guardian || '-';
+  document.getElementById('assess-sum-hct').textContent = selectedAssessmentChild.hct ? selectedAssessmentChild.hct + '%' : 'ไม่มีข้อมูล';
+  document.getElementById('assess-sum-nutrition').textContent = selectedAssessmentChild.nutrition || 'ไม่มีข้อมูล';
+  document.getElementById('assess-child-summary').style.display = 'block';
+
+  var hctVal = selectedAssessmentChild.hct ? Number(selectedAssessmentChild.hct) : 0;
+  var hctScore = 0;
+  var hctDisplay = 'ไม่มีข้อมูล';
+  if (hctVal > 0) {
+    hctDisplay = hctVal + '%';
+    if (hctVal < 30) { hctScore = 2; }
+    else if (hctVal < 33) { hctScore = 1; }
+  }
+  document.getElementById('assess-dim1-val').textContent = hctDisplay;
+  var dim1Badge = document.getElementById('assess-dim1-points');
+  dim1Badge.textContent = hctScore + ' คะแนน';
+  if (hctScore === 2) { dim1Badge.style.background = 'rgba(255, 94, 108, 0.12)'; dim1Badge.style.color = 'var(--accent-red)'; }
+  else if (hctScore === 1) { dim1Badge.style.background = 'rgba(245, 166, 35, 0.12)'; dim1Badge.style.color = 'var(--accent-amber)'; }
+  else { dim1Badge.style.background = 'rgba(0, 201, 167, 0.12)'; dim1Badge.style.color = 'var(--accent-teal)'; }
+
+  var nutrVal = selectedAssessmentChild.nutrition || '';
+  var nutrScore = 0;
+  if (nutrVal === 'ผอม') { nutrScore = 2; }
+  else if (nutrVal === 'ค่อนข้างผอม') { nutrScore = 1; }
+  document.getElementById('assess-dim2-val').textContent = nutrVal || 'ไม่มีข้อมูล';
+  var dim2Badge = document.getElementById('assess-dim2-points');
+  dim2Badge.textContent = nutrScore + ' คะแนน';
+  if (nutrScore === 2) { dim2Badge.style.background = 'rgba(255, 94, 108, 0.12)'; dim2Badge.style.color = 'var(--accent-red)'; }
+  else if (nutrScore === 1) { dim2Badge.style.background = 'rgba(245, 166, 35, 0.12)'; dim2Badge.style.color = 'var(--accent-amber)'; }
+  else { dim2Badge.style.background = 'rgba(0, 201, 167, 0.12)'; dim2Badge.style.color = 'var(--accent-teal)'; }
+
+  var ironVal = selectedAssessmentChild.iron || 'สม่ำเสมอ';
+  var foodVal = selectedAssessmentChild.food || 'เป็นประจำ';
+  var socialVal = selectedAssessmentChild.social || 'เพียงพอ';
+  var ironTarget = ironVal;
+  if (ironVal === 'ได้') { ironTarget = 'สม่ำเสมอ'; }
+  if (ironVal === 'ไม่ได้' || ironVal === 'ไม่เคยได้รับ') { ironTarget = 'ได้รับยาแต่ไม่ได้กินยา'; }
+
+  window.setRadioChecked('assess-iron', ironTarget);
+  window.setRadioChecked('assess-food', foodVal);
+  window.setRadioChecked('assess-social', socialVal);
+  document.getElementById('f-assess-notes').value = selectedAssessmentChild.notes || '';
+  document.getElementById('assess-empty-state').style.display = 'none';
+  document.getElementById('assess-form-area').style.display = 'block';
+  window.calculateLiveScore();
+};
+
+window.setRadioChecked = function(name, value) {
+  var radios = document.getElementsByName(name);
+  for (var i = 0; i < radios.length; i++) {
+    if (radios[i].value === value) { radios[i].checked = true; break; }
+  }
+};
+
+function getRadioValue(name) {
+  var radios = document.getElementsByName(name);
+  for (var i = 0; i < radios.length; i++) {
+    if (radios[i].checked) { return radios[i].value; }
+  }
+  return "";
+}
+
+window.calculateLiveScore = function() {
+  if (!selectedAssessmentChild) { return; }
+  var hctVal = selectedAssessmentChild.hct ? Number(selectedAssessmentChild.hct) : 0;
+  var hctScore = 0;
+  if (hctVal > 0) {
+    if (hctVal < 30) { hctScore = 2; }
+    else if (hctVal < 33) { hctScore = 1; }
+  }
+  var nutrScore = 0;
+  var nutrVal = selectedAssessmentChild.nutrition || '';
+  if (nutrVal === 'ผอม') { nutrScore = 2; }
+  else if (nutrVal === 'ค่อนข้างผอม') { nutrScore = 1; }
+
+  var ironChoice = getRadioValue('assess-iron');
+  var foodChoice = getRadioValue('assess-food');
+  var socialChoice = getRadioValue('assess-social');
+
+  var ironScore = 0;
+  if (ironChoice === 'ได้รับยาแต่ไม่ได้กินยา' || ironChoice === 'ไม่เคยได้รับ') { ironScore = 2; }
+  else if (ironChoice === 'ไม่สม่ำเสมอ') { ironScore = 1; }
+  var foodScore = 0;
+  if (foodChoice === 'ไม่ได้บริโภค') { foodScore = 2; }
+  else if (foodChoice === 'บางครั้ง') { foodScore = 1; }
+  var socialScore = 0;
+  if (socialChoice === 'ไม่เพียงพอ') { socialScore = 2; }
+  else if (socialChoice === 'ขัดสน') { socialScore = 1; }
+
+  var totalScore = hctScore + nutrScore + ironScore + foodScore + socialScore;
+  document.getElementById('assess-score-val').textContent = totalScore;
+  var riskBadge = document.getElementById('assess-risk-badge');
+  var resultPanel = document.getElementById('assess-result-panel');
+  var recContent = document.getElementById('assess-recommendation');
+  riskBadge.className = 'risk-badge-display';
+  
+  if (totalScore >= 4) {
+    riskBadge.textContent = 'เสี่ยงสูง'; riskBadge.classList.add('high');
+    resultPanel.style.borderTopColor = 'var(--accent-red)';
+    recContent.innerHTML = '<strong>กลุ่มเสี่ยงสูง (ส่งต่อรพ. และเยี่ยมบ้านด่วน):</strong> เด็กมีคะแนนความเสี่ยงสะสมสูง ควรส่งต่อพบแพทย์ทันที และจัดทีมสาธารณสุขลงพื้นที่เยี่ยมบ้านติดตามการได้รับยาเหล็กและโภชนาการอย่างเร่งด่วน';
+  } else if (totalScore >= 2) {
+    riskBadge.textContent = 'เสี่ยงปานกลาง'; riskBadge.classList.add('mid');
+    resultPanel.style.borderTopColor = 'var(--accent-amber)';
+    recContent.innerHTML = '<strong>กลุ่มเสี่ยงปานกลาง (ติดตามใกล้ชิด):</strong> แนะนำให้ยาเหล็กเสริมสม่ำเสมอและปรับพฤติกรรมการกินอาหาร นัดติดตามตรวจเช็คผลเลือด Hct ซ้ำใน 1-2 เดือน';
+  } else {
+    riskBadge.textContent = 'เสี่ยงต่ำ'; riskBadge.classList.add('low');
+    resultPanel.style.borderTopColor = 'var(--accent-teal)';
+    recContent.innerHTML = '<strong>กลุ่มเสี่ยงต่ำ (เฝ้าระวังปกติ):</strong> ให้การบริโภคยาเหล็กเสริมและอาหารครบ 5 หมู่ตามแนวทางมาตรฐาน เฝ้าระวังและประเมินตามกำหนดรอบปกติ';
+  }
+};
+
+window.submitAssessment = function() {
+  if (!selectedAssessmentChild) { window.showToast("กรุณาเลือกเด็กก่อนบันทึกผลการประเมิน", "error"); return; }
+  var ironChoice = getRadioValue('assess-iron');
+  var foodChoice = getRadioValue('assess-food');
+  var socialChoice = getRadioValue('assess-social');
+  var notesText = document.getElementById('f-assess-notes').value || '';
+  var updateData = JSON.parse(JSON.stringify(selectedAssessmentChild));
+  updateData.iron = ironChoice; updateData.food = foodChoice; updateData.social = socialChoice; updateData.notes = notesText;
+
+  window.showLoading(true, "กำลังบันทึกผลการประเมินความเสี่ยง...");
+  if (isGAS) {
+    google.script.run
+      .withSuccessHandler(function(res) {
+        window.showLoading(false);
+        if (res.success) { window.showToast("บันทึกผลการประเมินความเสี่ยงสำเร็จเรียบร้อย ✅"); window.resetAssessmentForm(); window.refreshData(); }
+        else { window.showToast("บันทึกข้อมูลไม่สำเร็จ: " + res.error, "error"); }
+      })
+      .withFailureHandler(function(err) { window.showLoading(false); window.showToast("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์: " + err, "error"); })
+      .saveChild(updateData);
+  } else {
+    setTimeout(function() {
+      window.showLoading(false);
+      var localChildren = JSON.parse(safeStorage.getItem("iron_zero_children")) || [];
+      var idx = -1;
+      for (var i = 0; i < localChildren.length; i++) {
+        if (localChildren[i].id === updateData.id) { idx = i; break; }
+      }
+      var hctVal = Number(updateData.hct); var hctScore = 0;
+      if (hctVal > 0) { if (hctVal < 30) { hctScore = 2; } else if (hctVal < 33) { hctScore = 1; } }
+      var nutrScore = 0; if (updateData.nutrition === 'ผอม') { nutrScore = 2; } else if (updateData.nutrition === 'ค่อนข้างผอม') { nutrScore = 1; }
+      var ironScore = (ironChoice === 'ได้รับยาแต่ไม่ได้กินยา' || ironChoice === 'ไม่เคยได้รับ') ? 2 : (ironChoice === 'ไม่สม่ำเสมอ' ? 1 : 0);
+      var foodScore = foodChoice === 'ไม่ได้บริโภค' ? 2 : (foodChoice === 'บางครั้ง' ? 1 : 0);
+      var socialScore = socialChoice === 'ไม่เพียงพอ' ? 2 : (socialChoice === 'ขัดสน' ? 1 : 0);
+      var totalScore = hctScore + nutrScore + ironScore + foodScore + socialScore;
+      var status = "เสี่ยงต่ำ"; if (totalScore >= 4) { status = "เสี่ยงสูง"; } else if (totalScore >= 2) { status = "เสี่ยงปานกลาง"; }
+      updateData.status = status; updateData.totalScore = totalScore;
+      if (idx !== -1) { localChildren[idx] = updateData; safeStorage.setItem("iron_zero_children", JSON.stringify(localChildren)); }
+      var localLogs = JSON.parse(safeStorage.getItem("iron_zero_logs")) || [];
+      localLogs.unshift({ timestamp: new Date().toLocaleString('th-TH'), user: "local-user@example.com", action: "ประเมินความเสี่ยง", details: "ทำแบบประเมินรายบุคคลสำหรับเด็ก: " + updateData.name + " คะแนนรวม: " + totalScore + " (" + status + ")" });
+      safeStorage.setItem("iron_zero_logs", JSON.stringify(localLogs));
+      window.showToast("บันทึกผลการประเมินสำเร็จ (Simulator) ✅");
+      window.resetAssessmentForm(); window.refreshData();
+    }, 500);
+  }
+};
+
+window.resetAssessmentForm = function() {
+  selectedAssessmentChild = null;
+  document.getElementById('f-assess-child-select').value = '';
+  document.getElementById('assess-child-summary').style.display = 'none';
+  document.getElementById('assess-form-area').style.display = 'none';
+  document.getElementById('assess-empty-state').style.display = 'block';
+  document.getElementById('f-assess-notes').value = '';
+};
+
+// -- SETTINGS -------------------------------------------------
+
+window.switchSettingsTab = function(tabId) {
+  document.querySelectorAll('.settings-nav-item').forEach(function(item) {
+    item.classList.remove('active');
+    if (item.getAttribute('onclick').indexOf(tabId) !== -1) { item.classList.add('active'); }
+  });
+  document.querySelectorAll('.settings-tab-page').forEach(function(page) { page.classList.remove('active'); });
+  document.getElementById('settings-tab-' + tabId).classList.add('active');
+};
+
+window.togglePasswordVisibility = function(inputId) {
+  var input = document.getElementById(inputId);
+  if (input.type === 'password') { input.type = 'text'; }
+  else { input.type = 'password'; }
+};
+
+window.loadSystemSettings = function() {
+  if (isGAS) {
+    google.script.run
+      .withSuccessHandler(function(settings) {
+        if (settings.lineToken) { document.getElementById('f-setting-line-token').value = settings.lineToken; }
+        if (settings.spreadsheetId) { document.getElementById('s-sheet-id-input').value = settings.spreadsheetId; }
+        if (settings.lineClientId) { document.getElementById('f-setting-line-client-id').value = settings.lineClientId; }
+        if (settings.lineClientSecret) { document.getElementById('f-setting-line-client-secret').value = settings.lineClientSecret; }
+        if (settings.lineRedirectUri) { document.getElementById('f-setting-line-redirect-uri').value = settings.lineRedirectUri; }
+      })
+      .getSystemSettings();
+  } else {
+    document.getElementById('f-setting-line-token').value = safeStorage.getItem("iron_zero_line_token") || "";
+    document.getElementById('s-sheet-id-input').value = safeStorage.getItem("iron_zero_sheet_id") || "1lpQ502MZlt8sUyOlgirGozD05Gs1N8B6QEJdVxHNoDs";
+    document.getElementById('f-setting-line-client-id').value = safeStorage.getItem("iron_zero_line_client_id") || "";
+    document.getElementById('f-setting-line-client-secret').value = safeStorage.getItem("iron_zero_line_client_secret") || "";
+    document.getElementById('f-setting-line-redirect-uri').value = safeStorage.getItem("iron_zero_line_redirect_uri") || "";
+  }
+};
+
+window.saveSettings = function() {
+  var lineToken = document.getElementById('f-setting-line-token').value.trim();
+  var spreadsheetId = document.getElementById('s-sheet-id-input').value.trim();
+  var lineClientId = document.getElementById('f-setting-line-client-id').value.trim();
+  var lineClientSecret = document.getElementById('f-setting-line-client-secret').value.trim();
+  var lineRedirectUri = document.getElementById('f-setting-line-redirect-uri').value.trim();
+  window.showLoading(true, "กำลังบันทึกการตั้งค่าระบบ...");
+  if (isGAS) {
+    google.script.run
+      .withSuccessHandler(function() { window.showLoading(false); window.showToast("บันทึกการตั้งค่าเรียบร้อยแล้ว ✅"); window.refreshData(); })
+      .saveSystemSettings({ lineToken: lineToken, spreadsheetId: spreadsheetId, lineClientId: lineClientId, lineClientSecret: lineClientSecret, lineRedirectUri: lineRedirectUri });
+  } else {
+    setTimeout(function() {
+      safeStorage.setItem("iron_zero_line_token", lineToken); safeStorage.setItem("iron_zero_sheet_id", spreadsheetId);
+      safeStorage.setItem("iron_zero_line_client_id", lineClientId); safeStorage.setItem("iron_zero_line_client_secret", lineClientSecret);
+      safeStorage.setItem("iron_zero_line_redirect_uri", lineRedirectUri);
+      window.showLoading(false); window.showToast("บันทึกการตั้งค่าจำลองสำเร็จ ✅", "info"); window.refreshData();
+    }, 500);
+  }
+};
+
+window.testLineNotify = function() {
+  var lineToken = document.getElementById('f-setting-line-token').value.trim();
+  if (!lineToken) { window.showToast("กรุณาใส่ Line Token ก่อนทดสอบ", "error"); return; }
+  window.showLoading(true, "กำลังส่งข้อความทดสอบ...");
+  if (isGAS) {
+    google.script.run
+      .withSuccessHandler(function(res) { window.showLoading(false); if (res.success) { window.showToast("ส่งข้อความทดสอบสำเร็จ! กรุณาตรวจสอบใน LINE"); } else { window.showToast("ส่งไม่สำเร็จ: " + res.error, "error"); } })
+      .testLineNotify(lineToken);
+  } else {
+    setTimeout(function() { window.showLoading(false); window.showToast("ทดสอบส่งสำเร็จ (Simulation Mode)", "info"); }, 800);
+  }
+};
+
+// -- AUTHENTICATION -------------------------------------------
+
+window.switchLoginTab = function(role) {
+  document.getElementById('tab-btn-staff').classList.toggle('active', role === 'staff');
+  document.getElementById('tab-btn-vhv').classList.toggle('active', role === 'vhv');
+  document.getElementById('login-sec-staff').classList.toggle('active', role === 'staff');
+  document.getElementById('login-sec-vhv').classList.toggle('active', role === 'vhv');
+};
+
+window.moveOtpFocus = function(current, nextId) {
+  if (current.value.length >= 1 && nextId) { document.getElementById(nextId).focus(); }
+};
+
+window.submitStaffEmailLogin = function() {
+  var email = document.getElementById('login-staff-email').value.trim();
+  var password = document.getElementById('login-staff-password').value.trim();
+  if (!email) { window.showToast("กรุณากรอกอีเมลองค์กร", "error"); return; }
+  window.showLoading(true, "กำลังตรวจสอบข้อมูล...");
+  if (isGAS) {
+    google.script.run
+      .withSuccessHandler(function(res) { window.showLoading(false); if (res.success) { window.setSession(res.user); } else { window.showToast(res.error, "error"); } })
+      .withFailureHandler(function(err) { window.showLoading(false); window.showToast(err.toString(), "error"); })
+      .verifyUserLogin("SSO", email, password);
+  } else {
+    setTimeout(function() {
+      window.showLoading(false);
+      var user = MOCK_USERS.filter(function(u) { return u.email && u.email.toLowerCase() === email.toLowerCase(); })[0];
+      if (user) { window.setSession(user); } else { window.showToast("ไม่พบบัญชีผู้ใช้งานจำลองอีเมลนี้", "error"); }
+    }, 800);
+  }
+};
+
+window.handleLineLogin = function() {
+  if (isGAS) {
+    window.showLoading(true, "กำลังเปลี่ยนหน้าไปยัง LINE Login...");
+    google.script.run
+      .withSuccessHandler(function(settings) {
+        window.showLoading(false);
+        var clientId = settings.lineClientId;
+        var redirectUri = settings.lineRedirectUri || window.location.href.split('?')[0];
+        if (!clientId) { window.showToast("กรุณาตั้งค่า LINE Client ID ในระบบก่อนใช้งาน", "error"); return; }
+        var state = "state_" + new Date().getTime();
+        var url = "https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=" + clientId + "&redirect_uri=" + encodeURIComponent(redirectUri) + "&state=" + state + "&scope=profile%20openid";
+        window.top.location.href = url;
+      })
+      .withFailureHandler(function(err) { window.showLoading(false); window.showToast("ไม่สามารถดึงค่า LINE Settings ได้: " + err, "error"); })
+      .getSystemSettings();
+  } else {
+    window.showLoading(true, "กำลังจำลอง LINE Login...");
+    setTimeout(function() { window.showLoading(false); window.setSession(MOCK_USERS[2]); }, 1000);
+  }
+};
+
+window.requestSMSOTP = function() {
+  var phone = document.getElementById('login-vhv-phone').value.trim();
+  if (!phone) { window.showToast("กรุณากรอกเบอร์โทรศัพท์", "error"); return; }
+  var matchUser = MOCK_USERS.filter(function(u) { return u.phone && u.phone.replace(/[- ]/g, "") === phone.replace(/[- ]/g, ""); })[0];
+  if (!matchUser && !isGAS) { window.showToast("เบอร์โทรศัพท์นี้ยังไม่ได้ลงทะเบียนในระบบจำลอง", "error"); return; }
+  window.showLoading(true, "กำลังส่งรหัส OTP...");
+  if (isGAS) {
+    google.script.run
+      .withSuccessHandler(function(res) { window.showLoading(false); if (res.success) { window.startOTPDemo(phone); } else { window.showToast(res.error, "error"); } })
+      .withFailureHandler(function(err) { window.showLoading(false); window.showToast(err.toString(), "error"); })
+      .verifyUserLogin("OTP", phone, "");
+  } else {
+    setTimeout(function() { window.showLoading(false); window.startOTPDemo(phone); }, 800);
+  }
+};
+
+window.startOTPDemo = function(phone) {
+  mockGeneratedOTP = Math.floor(100000 + Math.random() * 900000).toString();
+  alert("💬 [จำลอง SMS OTP]\nรหัสยืนยันตัวตนสำหรับ Iron Zero Risk ของคุณคือ: " + mockGeneratedOTP + " (มีอายุใช้งาน 1 นาที)");
+  document.getElementById('otp-step-phone').style.display = 'none';
+  document.getElementById('otp-step-code').style.display = 'block';
+  for (var i = 1; i <= 6; i++) { document.getElementById('otp-box-' + i).value = ''; }
+  document.getElementById('otp-box-1').focus();
+  var seconds = 60; var timerEl = document.getElementById('otp-countdown');
+  timerEl.textContent = seconds + " วินาที"; clearInterval(otpTimerInterval);
+  otpTimerInterval = setInterval(function() {
+    seconds--; timerEl.textContent = seconds + " วินาที";
+    if (seconds <= 0) { clearInterval(otpTimerInterval); window.showToast("รหัส OTP หมดอายุการใช้งานแล้ว กรุณาขอใหม่", "error"); window.resetOTPStep(); }
+  }, 1000);
+};
+
+window.resetOTPStep = function() {
+  clearInterval(otpTimerInterval);
+  document.getElementById('otp-step-phone').style.display = 'block';
+  document.getElementById('otp-step-code').style.display = 'none';
+};
+
+window.verifySMSOTP = function() {
+  var enteredCode = "";
+  for (var i = 1; i <= 6; i++) { enteredCode += document.getElementById('otp-box-' + i).value.trim(); }
+  if (enteredCode.length < 6) { window.showToast("กรุณากรอกรหัส OTP ให้ครบ 6 หลัก", "error"); return; }
+  if (enteredCode !== mockGeneratedOTP) { window.showToast("รหัส OTP ไม่ถูกต้อง กรุณากรอกใหม่อีกครั้ง", "error"); return; }
+  clearInterval(otpTimerInterval);
+  var phone = document.getElementById('login-vhv-phone').value.trim();
+  window.showLoading(true, "กำลังยืนยันรหัส OTP...");
+  if (isGAS) {
+    google.script.run
+      .withSuccessHandler(function(res) { window.showLoading(false); if (res.success) { window.setSession(res.user); } else { window.showToast(res.error, "error"); } })
+      .withFailureHandler(function(err) { window.showLoading(false); window.showToast(err.toString(), "error"); })
+      .verifyUserLogin("OTP", phone, "");
+  } else {
+    setTimeout(function() {
+      window.showLoading(false);
+      var user = MOCK_USERS.filter(function(u) { return u.phone && u.phone.replace(/[- ]/g, "") === phone.replace(/[- ]/g, ""); })[0];
+      window.setSession(user);
+    }, 800);
+  }
+};
+
+window.logout = function() {
+  window.showLoading(true, "กำลังออกจากระบบ...");
+  safeStorage.removeItem("iron_zero_session");
+  currentUser = null;
+  setTimeout(function() {
+    window.showLoading(false);
+    document.getElementById('login-staff-email').value = ''; document.getElementById('login-staff-password').value = '';
+    document.getElementById('login-vhv-phone').value = ''; window.resetOTPStep();
+    document.getElementById('login-container').style.display = 'flex'; document.getElementById('app').style.display = 'none';
+    window.showToast("ออกจากระบบสำเร็จแล้ว 🔒", "info");
+  }, 600);
+};
+
+window.applyUserRolePermissions = function() {
+  if (!currentUser) { return; }
+  var displayName = document.getElementById('user-display-name');
+  var displayRole = document.getElementById('user-display-role');
+  var avatar = document.getElementById('user-avatar');
+  if (displayName) { displayName.textContent = currentUser.name; }
+  if (displayRole) { displayRole.textContent = currentUser.role === 'อสม.' ? (currentUser.role + " (ม." + (currentUser.assignedVillage.replace(/[^0-9]/g, '') || currentUser.assignedVillage) + ")") : currentUser.role; }
+  if (avatar) {
+    avatar.textContent = currentUser.name.charAt(0);
+    if (currentUser.avatarUrl) { avatar.innerHTML = '<img src="' + currentUser.avatarUrl + '" style="width:100%;height:100%;border-radius:50%;">'; }
+  }
+  var isVhv = currentUser.role === 'อสม.';
+  ['add', 'settings', 'villages'].forEach(function(navId) {
+    var el = document.getElementById('nav-' + navId);
+    if (el) { el.style.display = isVhv ? 'none' : 'flex'; }
+  });
+  var deleteBtn = document.querySelector('#modal-detail .btn-danger');
+  if (deleteBtn) { deleteBtn.style.display = isVhv ? 'none' : 'inline-block'; }
+  var importTrigger = document.getElementById('csv-import-trigger');
+  if (importTrigger) { importTrigger.style.display = isVhv ? 'none' : 'inline-flex'; }
+};
+
+window.initAuthSession = function() {
+  if (typeof LINE_SESSION_USER !== 'undefined' && LINE_SESSION_USER !== null) {
+    if (LINE_SESSION_USER.error) { window.showToast("ความผิดพลาดจาก LINE: " + LINE_SESSION_USER.error, "error"); }
+    else {
+      window.setSession(LINE_SESSION_USER);
+      if (window.history && window.history.replaceState) { window.history.replaceState({}, document.title, window.location.pathname); }
+      return;
+    }
+  }
+  var savedSession = safeStorage.getItem("iron_zero_session");
+  if (savedSession) {
+    currentUser = JSON.parse(savedSession);
+    document.getElementById('login-container').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+    window.applyUserRolePermissions();
+    window.refreshData();
+  } else {
+    document.getElementById('login-container').style.display = 'flex';
+    document.getElementById('app').style.display = 'none';
+    window.showLoading(false);
+  }
+};
+
+window.onload = function() {
+  window.initAddressCascading();
+  window.initAuthSession();
+};
+</script>

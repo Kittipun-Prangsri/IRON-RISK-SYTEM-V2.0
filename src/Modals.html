@@ -1,0 +1,84 @@
+  <!-- MODAL: Child Detail -->
+  <div class="modal-overlay" id="modal-detail">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title" id="modal-detail-title">ข้อมูลเด็กรายบุคคล</div>
+        <button class="modal-close" onclick="closeModal('modal-detail')"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body" id="modal-detail-body">
+        <!-- Details loaded dynamically -->
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" onclick="logMedicineFromDetail()"><i class="fas fa-pills"></i>
+          บันทึกกินยา</button>
+        <button class="btn btn-secondary" onclick="editFromDetail()"><i class="fas fa-edit"></i> แก้ไข</button>
+        <button class="btn btn-danger" onclick="deleteFromDetail()"><i class="fas fa-trash"></i> ลบ</button>
+        <button class="btn btn-secondary" onclick="closeModal('modal-detail')">ปิด</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Confirm Delete -->
+  <div class="modal-overlay" id="modal-confirm">
+    <div class="modal" style="max-width:400px;">
+      <div class="modal-header">
+        <div class="modal-title">ยืนยันการลบข้อมูล</div>
+        <button class="modal-close" onclick="closeModal('modal-confirm')"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body">
+        <p style="color:var(--text-secondary);">คุณต้องการลบข้อมูลเด็กคนนี้ใช่หรือไม่?
+          การดำเนินการนี้ไม่สามารถย้อนกลับได้</p>
+        <p style="margin-top:12px;font-weight:600;color:var(--accent-red);" id="confirm-name"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-danger" id="confirm-delete-btn">ยืนยันลบ</button>
+        <button class="btn btn-secondary" onclick="closeModal('modal-confirm')">ยกเลิก</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Log Medicine -->
+  <div class="modal-overlay" id="modal-med">
+    <div class="modal" style="max-width: 450px;">
+      <div class="modal-header">
+        <div class="modal-title"><i class="fas fa-pills" style="color:var(--accent-teal)"></i> บันทึกการกินยาธาตุเหล็ก
+        </div>
+        <button class="modal-close" onclick="closeModal('modal-med')"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="f-med-child-id">
+        <div class="form-group">
+          <label class="form-label">ชื่อเด็ก</label>
+          <input class="form-control" id="f-med-child-name" readonly
+            style="opacity: 0.8; background: var(--bg-elevated);">
+        </div>
+        <div class="form-group">
+          <label class="form-label">วันที่กินยา</label>
+          <input class="form-control" id="f-med-date" type="date" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">เวลากินยา</label>
+          <input class="form-control" id="f-med-time" type="time" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">สถานะการกินยา</label>
+          <select class="form-control" id="f-med-taken">
+            <option value="กินยาแล้ว" selected>กินยาแล้ว (Taken)</option>
+            <option value="ไม่ได้กิน">ไม่ได้กิน (Not taken)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">รหัส อสม.</label>
+          <input class="form-control" id="f-med-vhv-id" placeholder="เช่น AOR001" value="AOR001">
+        </div>
+        <div class="form-group">
+          <label class="form-label">หมายเหตุเพิ่มเติม</label>
+          <input class="form-control" id="f-med-notes" placeholder="เช่น อาการข้างเคียง หรือขนาดยา">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" onclick="submitMedicineLog()"><i class="fas fa-save"></i> บันทึกข้อมูล</button>
+        <button class="btn btn-secondary" onclick="closeModal('modal-med')">ยกเลิก</button>
+      </div>
+    </div>
+  </div>
