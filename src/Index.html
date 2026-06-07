@@ -11,10 +11,13 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <!-- LINE LIFF SDK -->
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   
   <script>
     // Safe injection of lineUser from GAS template
     var LINE_SESSION_USER = null;
+    var LINE_SESSION_ERROR = null;
     try {
       // Use backticks to handle potential newlines and single/double quotes safely.
       var rawSession = `<?!= lineUser ?>`;
@@ -22,7 +25,15 @@
         LINE_SESSION_USER = JSON.parse(rawSession);
       }
     } catch (e) {
-      console.warn("GAS template variable resolution failed (likely running locally):", e);
+      console.warn("GAS lineUser parse failed:", e);
+    }
+    try {
+      var rawError = `<?!= lineError ?>`;
+      if (rawError && rawError !== '<?' + '!= lineError ?>' && rawError !== 'null') {
+        LINE_SESSION_ERROR = JSON.parse(rawError);
+      }
+    } catch (e) {
+      console.warn("GAS lineError parse failed:", e);
     }
   </script>
 
@@ -871,6 +882,55 @@
           </div>
         </div>
 
+        <!-- ===== PAGE: USERS ===== -->
+        <div class="page" id="page-users">
+          <div class="page-header">
+            <div class="page-header-left">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <h2>จัดการผู้ใช้งาน</h2>
+                <span class="badge-risk low" id="user-count-badge" style="font-size: 14px; padding: 4px 10px;">0 คน</span>
+              </div>
+              <p>จัดการสิทธิ์การเข้าถึง ข้อมูล อสม. และหมู่บ้านที่รับผิดชอบ</p>
+            </div>
+            <button class="btn btn-primary" onclick="openUserModal()">
+              <i class="fas fa-user-plus"></i> เพิ่มผู้ใช้งาน
+            </button>
+          </div>
+
+          <div class="card" style="margin-bottom: 20px;">
+            <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+              <div style="flex: 1; position: relative; min-width: 250px;">
+                <i class="fas fa-search" style="position: absolute; left: 12px; top: 12px; color: var(--text-muted);"></i>
+                <input type="text" id="user-search-input" class="form-control" placeholder="ค้นหาชื่อ, อีเมล หรือเบอร์โทรศัพท์..." 
+                  style="padding-left: 36px;" onkeyup="handleUserSearch(this.value)">
+              </div>
+              <button class="btn btn-secondary" onclick="refreshUsers()">
+                <i class="fas fa-sync-alt"></i> รีเฟรชรายชื่อ
+              </button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="table-container">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th><i class="fas fa-user"></i> ชื่อ-นามสกุล</th>
+                    <th><i class="fas fa-id-badge"></i> บทบาท (Role)</th>
+                    <th><i class="fas fa-address-book"></i> อีเมล / เบอร์โทร</th>
+                    <th><i class="fas fa-map-marker-alt"></i> หมู่บ้านรับผิดชอบ</th>
+                    <th><i class="fas fa-check-circle"></i> สถานะ</th>
+                    <th style="text-align: center;">จัดการ</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-users">
+                  <!-- Users loaded dynamically -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
         <!-- ===== PAGE: LOG ===== -->
         <div class="page" id="page-log">
           <div class="page-header">
@@ -979,6 +1039,10 @@
                     <input type="text" class="form-control" id="f-setting-line-client-id" placeholder="เช่น 2000123456">
                   </div>
                   <div class="form-group">
+                    <label class="form-label">LIFF ID (สำหรับเปิดในแอป LINE)</label>
+                    <input type="text" class="form-control" id="f-setting-liff-id" placeholder="เช่น 200xxxxxx-xxxxxxxx">
+                  </div>
+                  <div class="form-group">
                     <label class="form-label">LINE Client Secret (Channel Secret)</label>
                     <div style="display: flex; gap: 8px;">
                       <input type="password" class="form-control" id="f-setting-line-client-secret" placeholder="Channel Secret Key">
@@ -1075,6 +1139,16 @@
   <div class="loading-overlay" id="loading-overlay">
     <div class="spinner"></div>
     <div class="loading-text" id="loading-text">กำลังโหลดข้อมูล...</div>
+  </div>
+
+  <!-- SCROLL NAVIGATION -->
+  <div class="scroll-nav-container">
+    <button class="scroll-btn" id="scroll-to-top" onclick="window.scrollToSection('top')" title="เลื่อนขึ้นบนสุด">
+      <i class="fas fa-chevron-up"></i>
+    </button>
+    <button class="scroll-btn" id="scroll-to-bottom" onclick="window.scrollToSection('bottom')" title="เลื่อนลงล่างสุด">
+      <i class="fas fa-chevron-down"></i>
+    </button>
   </div>
 
   <?!= include('JavaScript'); ?>

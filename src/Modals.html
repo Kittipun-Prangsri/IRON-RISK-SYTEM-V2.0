@@ -82,3 +82,54 @@
       </div>
     </div>
   </div>
+  <!-- MODAL: Add/Edit User -->
+  <div class="modal-overlay" id="modal-user">
+    <div class="modal" style="max-width: 500px;">
+      <div class="modal-header">
+        <div class="modal-title" id="modal-user-title">เพิ่มผู้ใช้งานใหม่</div>
+        <button class="modal-close" onclick="closeModal('modal-user')"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="f-user-internal-id">
+        <input type="hidden" id="f-user-line-id"> <!-- Hidden field for LineUserId -->
+        <div class="form-group">
+          <label class="form-label">ชื่อ-นามสกุล</label>
+          <input type="text" class="form-control" id="f-user-name" placeholder="ระบุชื่อเจ้าหน้าที่ หรือ อสม.">
+        </div>
+        <div class="form-group">
+          <label class="form-label">บทบาท (Role)</label>
+          <select class="form-control" id="f-user-role" onchange="toggleUserVillageField()">
+            <option value="เจ้าหน้าที่ รพ.">เจ้าหน้าที่ รพ.</option>
+            <option value="อสม.">อสม. ประจำบ้าน</option>
+          </select>
+        </div>
+        <div class="form-group" id="user-email-group">
+          <label class="form-label">อีเมล (Google Account)</label>
+          <input type="email" class="form-control" id="f-user-email" placeholder="ตัวอย่าง name@gmail.com">
+          <small class="text-muted">ใช้สำหรับเจ้าหน้าที่ รพ. เข้าสู่ระบบแบบอัตโนมัติ</small>
+        </div>
+        <div class="form-group" id="user-phone-group">
+          <label class="form-label">เบอร์โทรศัพท์</label>
+          <input type="tel" class="form-control" id="f-user-phone" placeholder="08xxxxxxxx">
+          <small class="text-muted">ใช้สำหรับ อสม. รับรหัส OTP</small>
+        </div>
+        <div class="form-group" id="user-village-group" style="display: none;">
+          <label class="form-label">หมู่บ้านที่รับผิดชอบ</label>
+          <select class="form-control" id="f-user-village">
+            <!-- Populated dynamically -->
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">สถานะ</label>
+          <select class="form-control" id="f-user-status">
+            <option value="Active">ใช้งานปกติ (Active)</option>
+            <option value="Suspended">ระงับการใช้งาน (Suspended)</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" onclick="submitUserForm()"><i class="fas fa-save"></i> บันทึกข้อมูล</button>
+        <button class="btn btn-secondary" onclick="closeModal('modal-user')">ยกเลิก</button>
+      </div>
+    </div>
+  </div>

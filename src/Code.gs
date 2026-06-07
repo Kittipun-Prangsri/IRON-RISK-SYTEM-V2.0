@@ -5,12 +5,12 @@
 
 // Configuration via PropertiesService
 function getSpreadsheetId() {
-  const props = PropertiesService.getScriptProperties();
+  var props = PropertiesService.getScriptProperties();
   return props.getProperty("SPREADSHEET_ID") || "1lpQ502MZlt8sUyOlgirGozD05Gs1N8B6QEJdVxHNoDs";
 }
 
 function getSpreadsheet() {
-  const id = getSpreadsheetId();
+  var id = getSpreadsheetId();
   try {
     return SpreadsheetApp.openById(id);
   } catch (e) {
@@ -19,59 +19,61 @@ function getSpreadsheet() {
   }
 }
 
-const SHEET_DATA = "ข้อมูลเด็ก";
-const SHEET_LOG  = "ActivityLog";
-const SHEET_AOR  = "AOR";
-const SHEET_MED  = "MedicineLog";
-const SHEET_USERS = "Users";
+var SHEET_DATA = "ข้อมูลเด็ก";
+var SHEET_LOG  = "ActivityLog";
+var SHEET_AOR  = "AOR";
+var SHEET_MED  = "MedicineLog";
+var SHEET_USERS = "Users";
 
 // Default LINE Notify Token (User can update in script or via UI)
 function getLineToken() {
-  const props = PropertiesService.getScriptProperties();
+  var props = PropertiesService.getScriptProperties();
   return props.getProperty("LINE_TOKEN") || "YOUR_LINE_NOTIFY_TOKEN_HERE";
 }
 
 function getSystemSettings() {
-  const props = PropertiesService.getScriptProperties();
+  var props = PropertiesService.getScriptProperties();
+  // URL จริงของ GAS Web App — ต้องตรงกับ Callback URL ที่ลงทะเบียนใน LINE Developers Console
+  var KNOWN_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxEp0MyUahOSzVhEJdMEnCK4ehDvgNNMhb4Fpubk2FirS7ezq3Af06LKnV7bjq_CPpKHQ/exec";
+  var scriptUrl = "";
+  try { scriptUrl = ScriptApp.getService().getUrl(); } catch(e) { scriptUrl = ""; }
+  // ใช้ scriptUrl จาก runtime ก่อน ถ้าไม่ได้ให้ใช้ KNOWN_SCRIPT_URL
+  scriptUrl = scriptUrl || KNOWN_SCRIPT_URL;
+  var storedRedirectUri = props.getProperty("LINE_REDIRECT_URI") || "";
   return {
-    lineToken: getLineToken(),
+    lineToken: props.getProperty("LINE_TOKEN") || "",
     spreadsheetId: getSpreadsheetId(),
-    lineClientId: props.getProperty("LINE_CLIENT_ID") || "",
-    lineClientSecret: props.getProperty("LINE_CLIENT_SECRET") || "",
-    lineRedirectUri: props.getProperty("LINE_REDIRECT_URI") || ""
+    lineClientId: props.getProperty("LINE_CLIENT_ID") || "2010316731",
+    lineClientSecret: props.getProperty("LINE_CLIENT_SECRET") || "8b9b3d2b383b57ee10d4571c8869b007",
+    // ลำดับความสำคัญ: ค่าที่บันทึกไว้ใน Properties > scriptUrl จาก runtime > KNOWN_SCRIPT_URL
+    lineRedirectUri: storedRedirectUri || scriptUrl,
+    liffId: props.getProperty("LIFF_ID") || "2010316731-yX26Zf8M",
+    scriptUrl: scriptUrl
   };
 }
 
+
 function saveSystemSettings(settings) {
-  const props = PropertiesService.getScriptProperties();
-  if (settings.lineToken !== undefined) {
-    props.setProperty("LINE_TOKEN", settings.lineToken);
-  }
-  if (settings.spreadsheetId !== undefined) {
-    props.setProperty("SPREADSHEET_ID", settings.spreadsheetId);
-  }
-  if (settings.lineClientId !== undefined) {
-    props.setProperty("LINE_CLIENT_ID", settings.lineClientId);
-  }
-  if (settings.lineClientSecret !== undefined) {
-    props.setProperty("LINE_CLIENT_SECRET", settings.lineClientSecret);
-  }
-  if (settings.lineRedirectUri !== undefined) {
-    props.setProperty("LINE_REDIRECT_URI", settings.lineRedirectUri);
-  }
+  var props = PropertiesService.getScriptProperties();
+  if (settings.lineToken !== undefined) { props.setProperty("LINE_TOKEN", settings.lineToken); }
+  if (settings.spreadsheetId !== undefined) { props.setProperty("SPREADSHEET_ID", settings.spreadsheetId); }
+  if (settings.lineClientId !== undefined) { props.setProperty("LINE_CLIENT_ID", settings.lineClientId); }
+  if (settings.lineClientSecret !== undefined) { props.setProperty("LINE_CLIENT_SECRET", settings.lineClientSecret); }
+  if (settings.lineRedirectUri !== undefined) { props.setProperty("LINE_REDIRECT_URI", settings.lineRedirectUri); }
+  if (settings.liffId !== undefined) { props.setProperty("LIFF_ID", settings.liffId); }
   return { success: true };
 }
 
 function testLineNotify(token) {
-  const message = "\n🔔 [Iron Zero Risk]\nระบบทดสอบการแจ้งเตือนสำเร็จแล้ว!\nเวลา: " + Utilities.formatDate(new Date(), "Asia/Bangkok", "HH:mm:ss");
+  var message = "\n🔔 [Iron Zero Risk]\nระบบทดสอบการแจ้งเตือนสำเร็จแล้ว!\nเวลา: " + Utilities.formatDate(new Date(), "Asia/Bangkok", "HH:mm:ss");
   try {
-    const res = UrlFetchApp.fetch("https://notify-api.line.me/api/notify", {
+    var res = UrlFetchApp.fetch("https://notify-api.line.me/api/notify", {
       method: "post",
       headers: { "Authorization": "Bearer " + token },
       payload: { message: message },
       muteHttpExceptions: true
     });
-    const code = res.getResponseCode();
+    var code = res.getResponseCode();
     if (code === 200) return { success: true };
     return { success: false, error: "HTTP " + code + ": " + res.getContentText() };
   } catch (err) {
@@ -79,7 +81,7 @@ function testLineNotify(token) {
   }
 }
 
-const HEADER_MAPPING = {
+var HEADER_MAPPING = {
   "WKT": ["WKT", "wkt"],
   "ID": ["ID", "id"],
   "ชื่อเด็ก": ["ชื่อเด็ก", "ชื่อ"],
@@ -113,16 +115,16 @@ const HEADER_MAPPING = {
 };
 
 function getColIndex(headers, key) {
-  const aliases = HEADER_MAPPING[key] || [key];
-  for (let i = 0; i < aliases.length; i++) {
-    const idx = headers.indexOf(aliases[i]);
+  var aliases = HEADER_MAPPING[key] || [key];
+  for (var i = 0; i < aliases.length; i++) {
+    var idx = headers.indexOf(aliases[i]);
     if (idx !== -1) return idx;
   }
   return -1;
 }
 
 function getMappedKey(header) {
-  for (const key in HEADER_MAPPING) {
+  for (var key in HEADER_MAPPING) {
     if (HEADER_MAPPING[key].indexOf(header) !== -1) {
       return key;
     }
@@ -132,18 +134,41 @@ function getMappedKey(header) {
 
 // ── GET ENTRYPOINT ──────────────────────────────────────────
 function doGet(e) {
-  let lineUser = null;
+  var lineUser = null;
+  var lineError = null;
+  var googleEmail = "";
+  
+  // 1. Handle LINE Login Callback
   if (e && e.parameter && e.parameter.code) {
     try {
-      lineUser = handleLineLoginCallback(e.parameter.code);
+      var callbackResult = handleLineLoginCallback(e.parameter.code);
+      if (callbackResult && callbackResult.error) {
+        lineError = callbackResult.error;
+        // ถ้าเป็น Pending ให้ส่ง lineUser ที่มี status:Pending กลับมาด้วย
+        if (callbackResult.user) {
+          lineUser = callbackResult.user;
+        }
+      } else if (callbackResult) {
+        lineUser = callbackResult;
+      }
     } catch (err) {
       console.error("LINE Login failed:", err);
+      lineError = err.toString();
     }
   }
-  
-  const template = HtmlService.createTemplateFromFile("Index");
+
+  // 2. Detect Google User (Seamless SSO)
+  try {
+    googleEmail = Session.getActiveUser().getEmail();
+  } catch (err) {
+    // Session might be limited in some sandbox modes
+  }
+
+  var template = HtmlService.createTemplateFromFile("Index");
   template.lineUser = lineUser ? JSON.stringify(lineUser) : "null";
-  
+  template.lineError = lineError ? JSON.stringify(lineError) : "null";
+  template.googleEmail = googleEmail || "";
+
   return template.evaluate()
     .setTitle("Iron Zero Risk — ระบบติดตามสุขภาพเด็ก")
     .setSandboxMode(HtmlService.SandboxMode.IFRAME)
@@ -151,19 +176,29 @@ function doGet(e) {
     .addMetaTag("viewport", "width=device-width, initial-scale=1.0");
 }
 
+/**
+ * ดึงข้อมูลผู้ใช้ปัจจุบันจาก Google Session (Seamless SSO)
+ */
+function getGoogleUser() {
+  var email = Session.getActiveUser().getEmail();
+  if (!email) return { success: false, error: "ไม่พบข้อมูล Google Account ของคุณ" };
+  
+  return verifyUserLogin("SSO", email, "");
+}
+
 function handleLineLoginCallback(code) {
-  const settings = getSystemSettings();
-  const clientId = settings.lineClientId;
-  const clientSecret = settings.lineClientSecret;
-  const redirectUri = settings.lineRedirectUri || ScriptApp.getService().getUrl();
+  var settings = getSystemSettings();
+  var clientId = settings.lineClientId;
+  var clientSecret = settings.lineClientSecret;
+  var redirectUri = settings.lineRedirectUri || settings.scriptUrl;
   
   if (!clientId || !clientSecret) {
     console.warn("LINE Credentials not set in System Settings");
-    return null;
+    return { error: "ยังไม่ได้ตั้งค่า LINE Client ID/Secret ในระบบ" };
   }
   
-  const tokenUrl = "https://api.line.me/oauth2/v2.1/token";
-  const payload = {
+  var tokenUrl = "https://api.line.me/oauth2/v2.1/token";
+  var payload = {
     grant_type: "authorization_code",
     code: code,
     redirect_uri: redirectUri,
@@ -171,89 +206,114 @@ function handleLineLoginCallback(code) {
     client_secret: clientSecret
   };
   
-  const options = {
+  var options = {
     method: "post",
     contentType: "application/x-www-form-urlencoded",
-    payload: Object.keys(payload).map(k => encodeURIComponent(k) + "=" + encodeURIComponent(payload[k])).join("&"),
+    payload: Object.keys(payload).map(function(k) { return encodeURIComponent(k) + "=" + encodeURIComponent(payload[k]); }).join("&"),
     muteHttpExceptions: true
   };
   
-  const response = UrlFetchApp.fetch(tokenUrl, options);
-  const tokenData = JSON.parse(response.getContentText());
+  var response = UrlFetchApp.fetch(tokenUrl, options);
+  var tokenData = JSON.parse(response.getContentText());
   
   if (tokenData.error) {
     console.error("LINE Token exchange error:", tokenData.error_description);
-    return null;
+    return { error: "LINE Token error: " + (tokenData.error_description || tokenData.error) };
   }
   
-  const accessToken = tokenData.access_token;
+  var accessToken = tokenData.access_token;
   
-  // Fetch profile
-  const profileUrl = "https://api.line.me/v2/profile";
-  const profileResponse = UrlFetchApp.fetch(profileUrl, {
+  // Fetch LINE Profile
+  var profileUrl = "https://api.line.me/v2/profile";
+  var profileResponse = UrlFetchApp.fetch(profileUrl, {
     method: "get",
     headers: { "Authorization": "Bearer " + accessToken },
     muteHttpExceptions: true
   });
   
-  const profileData = JSON.parse(profileResponse.getContentText());
-  if (profileData.userId) {
-    const ss = getSpreadsheet();
-    if (!ss) return null;
-    let usersSheet = ss.getSheetByName(SHEET_USERS);
-    if (!usersSheet) return null;
-    
-    const rows = usersSheet.getDataRange().getValues();
-    const headers = rows[0];
-    const idxLineUserId = headers.indexOf("LineUserId");
-    const idxId = headers.indexOf("ID");
-    const idxName = headers.indexOf("Name");
-    const idxRole = headers.indexOf("Role");
-    const idxAssignedVillage = headers.indexOf("AssignedVillage");
-    const idxStatus = headers.indexOf("Status");
-    
-    if (idxLineUserId === -1) return null;
-    
-    for (let i = 1; i < rows.length; i++) {
-      if (String(rows[i][idxLineUserId]).trim() === profileData.userId) {
-        if (idxStatus !== -1 && rows[i][idxStatus] !== "Active") {
-          return { error: "User is suspended" };
-        }
-        return {
-          id: idxId !== -1 ? rows[i][idxId] : "",
-          name: idxName !== -1 ? rows[i][idxName] : "",
-          role: idxRole !== -1 ? rows[i][idxRole] : "",
-          lineUserId: profileData.userId,
-          assignedVillage: idxAssignedVillage !== -1 ? rows[i][idxAssignedVillage] : "",
-          avatarUrl: profileData.pictureUrl || ""
-        };
-      }
-    }
-    
-    return {
-      lineUserId: profileData.userId,
-      name: profileData.displayName,
-      avatarUrl: profileData.pictureUrl || "",
-      unregistered: true
-    };
+  var profileData = JSON.parse(profileResponse.getContentText());
+  if (!profileData.userId) {
+    return { error: "ไม่สามารถดึงข้อมูล LINE Profile ได้" };
   }
-  
-  return null;
+
+  // ตรวจสอบว่ามีบัญชีในระบบหรือไม่
+  var result = verifyUserLogin("LINE", profileData.userId, "");
+  if (result.success) {
+    var user = result.user;
+    user.avatarUrl = profileData.pictureUrl || "";
+    user.displayName = profileData.displayName || user.name;
+    return user;
+  }
+
+  // ไม่พบในระบบ — Auto-register เป็น Pending
+  var newUserId = autoRegisterLineUser(profileData);
+  var pendingUser = {
+    id: newUserId,
+    name: profileData.displayName || "LINE User",
+    role: "รอการอนุมัติ",
+    email: "",
+    lineUserId: profileData.userId,
+    phone: "",
+    assignedVillage: "",
+    status: "Pending",
+    avatarUrl: profileData.pictureUrl || "",
+    displayName: profileData.displayName || "LINE User"
+  };
+  return {
+    error: "บัญชีของคุณกำลังรอการอนุมัติจากผู้ดูแลระบบ",
+    user: pendingUser
+  };
 }
 
-function include(filename) {
-  return HtmlService.createHtmlOutputFromFile(filename)
-    .getContent();
+/**
+ * Auto-register LINE user ที่ยังไม่มีในระบบ โดยสร้างบัญชีด้วย Status = Pending
+ */
+function autoRegisterLineUser(profileData) {
+  setupDatabase();
+  var ss = getSpreadsheet();
+  if (!ss) return null;
+  var usersSheet = ss.getSheetByName(SHEET_USERS) || ss.getSheetByName("Users");
+  if (!usersSheet) return null;
+
+  var headers = usersSheet.getRange(1, 1, 1, usersSheet.getLastColumn()).getValues()[0];
+  var idxId = headers.indexOf("ID");
+  var idxName = headers.indexOf("Name");
+  var idxRole = headers.indexOf("Role");
+  var idxEmail = headers.indexOf("Email");
+  var idxLineUserId = headers.indexOf("LineUserId");
+  var idxPhone = headers.indexOf("Phone");
+  var idxAssignedVillage = headers.indexOf("AssignedVillage");
+  var idxStatus = headers.indexOf("Status");
+
+  // สร้าง ID ใหม่
+  var newId = "LINE_" + profileData.userId.substring(0, 8).toUpperCase();
+  var timestamp = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyyMMdd_HHmmss");
+  newId = "L" + timestamp;
+
+  var newRow = new Array(headers.length).fill("");
+  if (idxId !== -1) newRow[idxId] = newId;
+  if (idxName !== -1) newRow[idxName] = profileData.displayName || "LINE User";
+  if (idxRole !== -1) newRow[idxRole] = "อสม.";
+  if (idxEmail !== -1) newRow[idxEmail] = "";
+  if (idxLineUserId !== -1) newRow[idxLineUserId] = profileData.userId;
+  if (idxPhone !== -1) newRow[idxPhone] = "";
+  if (idxAssignedVillage !== -1) newRow[idxAssignedVillage] = "";
+  if (idxStatus !== -1) newRow[idxStatus] = "Pending";
+
+  usersSheet.appendRow(newRow);
+  console.log("[AUTO-REGISTER] New LINE user registered:", profileData.userId, "->", newId);
+  logActivity("ลงทะเบียน", "Auto-register LINE user รอการอนุมัติ", profileData.userId);
+  return newId;
 }
 
 // ── DATABASE SETUP ──────────────────────────────────────────
 function setupDatabase() {
-  const ss = getSpreadsheet();
+  var ss = getSpreadsheet();
   if (!ss) return;
 
   // 1. Data Sheet (Child records)
-  let dataSheet = ss.getSheetByName(SHEET_DATA);
-  const targetHeaders = [
+  var dataSheet = ss.getSheetByName(SHEET_DATA);
+  var targetHeaders = [
     "ID", "ชื่อเด็ก", "อายุ", "บ้านเลขที่", "หมู่", "ชื่อหมู่บ้าน",
     "ตำบล", "อำเภอ", "จังหวัด",
     "Latitude", "Longitude", "Hct (%)", "น้ำหนัก (กก.)", "ส่วนสูง (ซม.)",
@@ -267,14 +327,14 @@ function setupDatabase() {
     dataSheet.getRange(1, 1, 1, targetHeaders.length).setFontWeight("bold").setBackground("#e2e8f0");
   } else {
     // Check for missing columns and append at the end using aliases
-    const lastCol = dataSheet.getLastColumn();
+    var lastCol = dataSheet.getLastColumn();
     if (lastCol > 0) {
-      const currentHeaders = dataSheet.getRange(1, 1, 1, lastCol).getValues()[0];
-      targetHeaders.forEach(h => {
-        const aliases = HEADER_MAPPING[h] || [h];
-        const exists = aliases.some(alias => currentHeaders.indexOf(alias) !== -1);
+      var currentHeaders = dataSheet.getRange(1, 1, 1, lastCol).getValues()[0];
+      targetHeaders.forEach(function(h) {
+        var aliases = HEADER_MAPPING[h] || [h];
+        var exists = aliases.some(function(alias) { return currentHeaders.indexOf(alias) !== -1; });
         if (!exists) {
-          const newCol = dataSheet.getLastColumn() + 1;
+          var newCol = dataSheet.getLastColumn() + 1;
           dataSheet.getRange(1, newCol).setValue(h).setFontWeight("bold").setBackground("#e2e8f0");
         }
       });
@@ -285,19 +345,19 @@ function setupDatabase() {
   }
 
   // 2. Activity Log Sheet
-  let logSheet = ss.getSheetByName(SHEET_LOG);
+  var logSheet = ss.getSheetByName(SHEET_LOG);
   if (!logSheet) {
     logSheet = ss.insertSheet(SHEET_LOG);
-    const headers = ["Timestamp", "User", "Action", "Details"];
+    var headers = ["Timestamp", "User", "Action", "Details"];
     logSheet.appendRow(headers);
     logSheet.getRange(1, 1, 1, headers.length).setFontWeight("bold").setBackground("#e2e8f0");
   }
 
   // 3. VHV / VHV Info Sheet (อสม.)
-  let aorSheet = ss.getSheetByName(SHEET_AOR);
+  var aorSheet = ss.getSheetByName(SHEET_AOR);
   if (!aorSheet) {
     aorSheet = ss.insertSheet(SHEET_AOR);
-    const headers = ["อสม. ID", "ชื่อ-นามสกุล", "เบอร์โทรศัพท์", "LINE Token"];
+    var headers = ["อสม. ID", "ชื่อ-นามสกุล", "เบอร์โทรศัพท์", "LINE Token"];
     aorSheet.appendRow(headers);
     aorSheet.getRange(1, 1, 1, headers.length).setFontWeight("bold").setBackground("#e2e8f0");
     // Append dummy VHV
@@ -305,42 +365,42 @@ function setupDatabase() {
   }
 
   // 4. Medicine Log Sheet
-  let medSheet = ss.getSheetByName(SHEET_MED);
+  var medSheet = ss.getSheetByName(SHEET_MED);
   if (!medSheet) {
     medSheet = ss.insertSheet(SHEET_MED);
-    const headers = ["Log ID", "Child ID", "Date", "Taken", "VHV ID", "Time", "Notes"];
+    var headers = ["Log ID", "Child ID", "Date", "Taken", "VHV ID", "Time", "Notes"];
     medSheet.appendRow(headers);
     medSheet.getRange(1, 1, 1, headers.length).setFontWeight("bold").setBackground("#e2e8f0");
   }
 
   // 5. Users Database Sheet
-  let usersSheet = ss.getSheetByName(SHEET_USERS);
+  var usersSheet = ss.getSheetByName(SHEET_USERS);
   if (!usersSheet) {
     usersSheet = ss.insertSheet(SHEET_USERS);
-    const headers = ["ID", "Name", "Role", "Email", "LineUserId", "Phone", "AssignedVillage", "Status"];
+    var headers = ["ID", "Name", "Role", "Email", "LineUserId", "Phone", "AssignedVillage", "Status"];
     usersSheet.appendRow(headers);
     usersSheet.getRange(1, 1, 1, headers.length).setFontWeight("bold").setBackground("#e2e8f0");
     
     // Seed initial users
-    const initialUsers = [
+    var initialUsers = [
       ["ST001", "นพ. สมชาย รักดี", "เจ้าหน้าที่ รพ.", "staff1@example.com", "", "081-111-2222", "ทั้งหมด", "Active"],
       ["ST002", "พยาบาล สมศรี สุขใจ", "เจ้าหน้าที่ รพ.", "staff2@example.com", "", "082-222-3333", "ทั้งหมด", "Active"],
       ["AOR001", "อสม. สมใจ ชุมชน", "อสม.", "", "U111122223333", "083-333-4444", "บ้านคลองหาด", "Active"],
       ["AOR002", "อสม. บุญมี รักถิ่น", "อสม.", "", "U444455556666", "084-444-5555", "บ้านเขาดิน", "Active"],
       ["AOR003", "อสม. ดวงใจ ปัญญา", "อสม.", "", "", "085-555-6666", "บ้านป่าช้ากวาง", "Active"]
     ];
-    initialUsers.forEach(u => usersSheet.appendRow(u));
+    initialUsers.forEach(function(u) { usersSheet.appendRow(u); });
   }
 }
 
 // ── GET DATA ────────────────────────────────────────────────
 function getData() {
   setupDatabase();
-  const ss = getSpreadsheet();
-  const dataSheet = ss.getSheetByName(SHEET_DATA);
-  const logSheet = ss.getSheetByName(SHEET_LOG);
+  var ss = getSpreadsheet();
+  var dataSheet = ss.getSheetByName(SHEET_DATA);
+  var logSheet = ss.getSheetByName(SHEET_LOG);
   
-  const result = {
+  var result = {
     children: [],
     logs: [],
     villages: {},
@@ -350,42 +410,42 @@ function getData() {
   };
 
   // Parse Children
-  const dataRows = dataSheet.getDataRange().getValues();
-  const headers = dataRows[0];
+  var dataRows = dataSheet.getDataRange().getValues();
+  var headers = dataRows[0];
   
   // Col mappings helper using aliases
-  const idxId = getColIndex(headers, "ID");
-  const idxName = getColIndex(headers, "ชื่อเด็ก");
-  const idxAge = getColIndex(headers, "อายุ");
-  const idxHouse = getColIndex(headers, "บ้านเลขที่");
-  const idxMoo = getColIndex(headers, "หมู่");
-  const idxVillage = getColIndex(headers, "ชื่อหมู่บ้าน");
-  const idxTambon = getColIndex(headers, "ตำบล");
-  const idxAmphoe = getColIndex(headers, "อำเภอ");
-  const idxProvince = getColIndex(headers, "จังหวัด");
-  const idxLat = getColIndex(headers, "Latitude");
-  const idxLng = getColIndex(headers, "Longitude");
-  const idxHct = getColIndex(headers, "Hct (%)");
-  const idxWeight = getColIndex(headers, "น้ำหนัก (กก.)");
-  const idxHeight = getColIndex(headers, "ส่วนสูง (ซม.)");
-  const idxNutrition = getColIndex(headers, "สถานะโภชนาการ");
-  const idxIron = getColIndex(headers, "ได้รับยาเหล็ก");
-  const idxFood = getColIndex(headers, "พฤติกรรมการกินอาหาร");
-  const idxSocial = getColIndex(headers, "ปัจจัยสังคมเศรษฐกิจ");
-  const idxGuardian = getColIndex(headers, "ผู้ดูแล");
-  const idxTotalScore = getColIndex(headers, "คะแนนรวม");
-  const idxStatus = getColIndex(headers, "ระดับความเสี่ยง");
-  const idxLastDate = getColIndex(headers, "วันที่กินยาล่าสุด");
-  const idxNotes = getColIndex(headers, "หมายเหตุ");
-  const idxActive = getColIndex(headers, "Active");
+  var idxId = getColIndex(headers, "ID");
+  var idxName = getColIndex(headers, "ชื่อเด็ก");
+  var idxAge = getColIndex(headers, "อายุ");
+  var idxHouse = getColIndex(headers, "บ้านเลขที่");
+  var idxMoo = getColIndex(headers, "หมู่");
+  var idxVillage = getColIndex(headers, "ชื่อหมู่บ้าน");
+  var idxTambon = getColIndex(headers, "ตำบล");
+  var idxAmphoe = getColIndex(headers, "อำเภอ");
+  var idxProvince = getColIndex(headers, "จังหวัด");
+  var idxLat = getColIndex(headers, "Latitude");
+  var idxLng = getColIndex(headers, "Longitude");
+  var idxHct = getColIndex(headers, "Hct (%)");
+  var idxWeight = getColIndex(headers, "น้ำหนัก (กก.)");
+  var idxHeight = getColIndex(headers, "ส่วนสูง (ซม.)");
+  var idxNutrition = getColIndex(headers, "สถานะโภชนาการ");
+  var idxIron = getColIndex(headers, "ได้รับยาเหล็ก");
+  var idxFood = getColIndex(headers, "พฤติกรรมการกินอาหาร");
+  var idxSocial = getColIndex(headers, "ปัจจัยสังคมเศรษฐกิจ");
+  var idxGuardian = getColIndex(headers, "ผู้ดูแล");
+  var idxTotalScore = getColIndex(headers, "คะแนนรวม");
+  var idxStatus = getColIndex(headers, "ระดับความเสี่ยง");
+  var idxLastDate = getColIndex(headers, "วันที่กินยาล่าสุด");
+  var idxNotes = getColIndex(headers, "หมายเหตุ");
+  var idxActive = getColIndex(headers, "Active");
 
-  for (let i = 1; i < dataRows.length; i++) {
-    const row = dataRows[i];
+  for (var i = 1; i < dataRows.length; i++) {
+    var row = dataRows[i];
     if (idxActive !== -1 && (row[idxActive] === false || row[idxActive] === "false")) {
       continue;
     }
     
-    const child = {
+    var child = {
       id: idxId !== -1 ? String(row[idxId]).replace(/\.0$/, '') : "",
       name: idxName !== -1 ? row[idxName] : "",
       age: idxAge !== -1 ? row[idxAge] : "",
@@ -422,10 +482,10 @@ function getData() {
   }
 
   // Parse Activity Logs (recent 50)
-  const logRows = logSheet.getDataRange().getValues();
-  const startRow = Math.max(1, logRows.length - 50);
-  for (let i = logRows.length - 1; i >= startRow; i--) {
-    const row = logRows[i];
+  var logRows = logSheet.getDataRange().getValues();
+  var startRow = Math.max(1, logRows.length - 50);
+  for (var i = logRows.length - 1; i >= startRow; i--) {
+    var row = logRows[i];
     result.logs.push({
       timestamp: row[0] instanceof Date ? Utilities.formatDate(row[0], "Asia/Bangkok", "dd/MM/yyyy HH:mm") : String(row[0]),
       user: row[1],
@@ -440,58 +500,58 @@ function getData() {
 // ── SAVE/EDIT CHILD ─────────────────────────────────────────
 function saveChild(childData, userEmail) {
   setupDatabase();
-  const ss = getSpreadsheet();
+  var ss = getSpreadsheet();
   if (!ss) return { success: false, error: "ไม่สามารถเชื่อมต่อกับ Google Sheets ได้ กรุณาตรวจสอบ Spreadsheet ID ในการตั้งค่า" };
   
-  const dataSheet = ss.getSheetByName(SHEET_DATA);
+  var dataSheet = ss.getSheetByName(SHEET_DATA);
   if (!dataSheet) return { success: false, error: "ไม่พบแผ่นงาน '" + SHEET_DATA + "' ใน Google Sheets" };
 
-  const dataRows = dataSheet.getDataRange().getValues();
-  const headers = dataRows[0];
+  var dataRows = dataSheet.getDataRange().getValues();
+  var headers = dataRows[0];
 
-  const idxId = getColIndex(headers, "ID");
-  const id = childData.id || "CHILD_" + new Date().getTime();
+  var idxId = getColIndex(headers, "ID");
+  var id = childData.id || "CHILD_" + new Date().getTime();
   
   // 1. Calculate Scores
   // Hct score: <30% = 2, 30-32.9% = 1, >=33% = 0
-  const hctVal = Number(childData.hct);
-  let hctScore = 0;
+  var hctVal = Number(childData.hct);
+  var hctScore = 0;
   if (hctVal > 0) {
     if (hctVal < 30) hctScore = 2;
     else if (hctVal < 33) hctScore = 1;
   }
   
   // Nutrition score: ผอม = 2, ค่อนข้างผอม = 1, other = 0
-  let nutrScore = 0;
+  var nutrScore = 0;
   if (childData.nutrition === "ผอม") nutrScore = 2;
   else if (childData.nutrition === "ค่อนข้างผอม") nutrScore = 1;
   
   // Iron score: ไม่เคยได้รับ/ไม่ได้กิน = 2, ไม่สม่ำเสมอ = 1, สม่ำเสมอ = 0 (support "ไม่ได้" as "ไม่เคยได้รับ", "ได้" as "สม่ำเสมอ")
-  let ironScore = 0;
+  var ironScore = 0;
   if (childData.iron === "ไม่เคยได้รับ" || childData.iron === "ไม่ได้" || childData.iron === "ได้รับยาแต่ไม่ได้กินยา") ironScore = 2;
   else if (childData.iron === "ไม่สม่ำเสมอ") ironScore = 1;
   
   // Food score: ไม่ได้บริโภค = 2, บางครั้ง = 1, เป็นประจำ = 0
-  let foodScore = 0;
+  var foodScore = 0;
   if (childData.food === "ไม่ได้บริโภค") foodScore = 2;
   else if (childData.food === "บางครั้ง") foodScore = 1;
   
   // Social score: ไม่เพียงพอ = 2, ขัดสน = 1, เพียงพอ = 0
-  let socialScore = 0;
+  var socialScore = 0;
   if (childData.social === "ไม่เพียงพอ") socialScore = 2;
   else if (childData.social === "ขัดสน") socialScore = 1;
   
-  const totalScore = hctScore + nutrScore + ironScore + foodScore + socialScore;
+  var totalScore = hctScore + nutrScore + ironScore + foodScore + socialScore;
   
   // Determine risk level based on score (matches HTML UI values)
-  let status = "เสี่ยงต่ำ";
+  var status = "เสี่ยงต่ำ";
   if (totalScore >= 4) status = "เสี่ยงสูง";
   else if (totalScore >= 2) status = "เสี่ยงปานกลาง";
 
   // Build row data mapping using dynamic alias matching
-  const rowValues = [];
-  headers.forEach(h => {
-    const canonicalKey = getMappedKey(h);
+  var rowValues = [];
+  headers.forEach(function(h) {
+    var canonicalKey = getMappedKey(h);
     switch(canonicalKey) {
       case "WKT":
         if (childData.lng && childData.lat) {
@@ -534,10 +594,10 @@ function saveChild(childData, userEmail) {
   });
 
   // Find existing row or append new
-  let isEdit = false;
-  let targetRowIndex = -1;
+  var isEdit = false;
+  var targetRowIndex = -1;
   if (idxId !== -1) {
-    for (let i = 1; i < dataRows.length; i++) {
+    for (var i = 1; i < dataRows.length; i++) {
       if (String(dataRows[i][idxId]) === String(id)) {
         isEdit = true;
         targetRowIndex = i + 1;
@@ -565,22 +625,22 @@ function saveChild(childData, userEmail) {
 // ── DELETE CHILD (SOFT DELETE) ──────────────────────────────
 function deleteChild(childId, userEmail) {
   setupDatabase();
-  const ss = getSpreadsheet();
-  const dataSheet = ss.getSheetByName(SHEET_DATA);
-  const dataRows = dataSheet.getDataRange().getValues();
-  const headers = dataRows[0];
+  var ss = getSpreadsheet();
+  var dataSheet = ss.getSheetByName(SHEET_DATA);
+  var dataRows = dataSheet.getDataRange().getValues();
+  var headers = dataRows[0];
   
-  const idxId = getColIndex(headers, "ID");
-  const idxActive = getColIndex(headers, "Active");
-  const idxName = getColIndex(headers, "ชื่อเด็ก");
+  var idxId = getColIndex(headers, "ID");
+  var idxActive = getColIndex(headers, "Active");
+  var idxName = getColIndex(headers, "ชื่อเด็ก");
 
-  let found = false;
+  var found = false;
   if (idxId !== -1 && idxActive !== -1) {
-    for (let i = 1; i < dataRows.length; i++) {
+    for (var i = 1; i < dataRows.length; i++) {
       if (String(dataRows[i][idxId]) === String(childId)) {
         // Set Active column to false
         dataSheet.getRange(i + 1, idxActive + 1).setValue(false);
-        const nameVal = idxName !== -1 ? dataRows[i][idxName] : childId;
+        var nameVal = idxName !== -1 ? dataRows[i][idxName] : childId;
         logActivity("ลบข้อมูลเด็ก", "ทำการลบ (Soft Delete) เด็ก ID: " + childId + " ชื่อ: " + nameVal, userEmail);
         found = true;
         break;
@@ -592,27 +652,19 @@ function deleteChild(childId, userEmail) {
 
 // ── UTILITIES: ACTIVITY LOGGER ──────────────────────────────
 function logActivity(action, details, userEmail) {
-  const ss = getSpreadsheet();
-  const logSheet = ss.getSheetByName(SHEET_LOG);
+  var ss = getSpreadsheet();
+  var logSheet = ss.getSheetByName(SHEET_LOG);
   if (!logSheet) return;
-  const user = userEmail || Session.getActiveUser().getEmail() || "local-user@example.com";
+  var user = userEmail || Session.getActiveUser().getEmail() || "local-user@example.com";
   logSheet.appendRow([new Date(), user, action, details]);
 }
 
 // ── UTILITIES: LINE NOTIFY ──────────────────────────────────
 function sendLineNotifyAlert(name, village, hct, score) {
-  const token = getLineToken();
+  var token = getLineToken();
   if (token === "YOUR_LINE_NOTIFY_TOKEN_HERE" || !token) return;
 
-  const message = `
-🚨 [Iron Zero Risk - Alert] 🚨
-พบเด็กความเสี่ยงสูง (ต้องลงเยี่ยมบ้านด่วน!)
-👶 ชื่อ: ${name}
-📍 หมู่บ้าน: ${village}
-🩸 Hct: ${hct}%
-📊 คะแนนความเสี่ยง: ${score}/10 คะแนน
-──────────────────────
-กรุณาลงพื้นที่ติดตามการกินยาเสริมธาตุเหล็กทันที`;
+  var message = "\n🚨 [Iron Zero Risk - Alert] 🚨\nพบเด็กความเสี่ยงสูง (ต้องลงเยี่ยมบ้านด่วน!)\n👶 ชื่อ: " + name + "\n📍 หมู่บ้าน: " + village + "\n🩸 Hct: " + hct + "%\n📊 คะแนนความเสี่ยง: " + score + "/10 คะแนน\n──────────────────────\nกรุณาลงพื้นที่ติดตามการกินยาเสริมธาตุเหล็กทันที";
 
   try {
     UrlFetchApp.fetch("https://notify-api.line.me/api/notify", {
@@ -629,13 +681,13 @@ function sendLineNotifyAlert(name, village, hct, score) {
 // ── MEDICINE LOG DATABASE PERSISTENCE ──────────────────────
 function saveMedicineLog(logData, userEmail) {
   setupDatabase();
-  const ss = getSpreadsheet();
-  const medSheet = ss.getSheetByName(SHEET_MED);
+  var ss = getSpreadsheet();
+  var medSheet = ss.getSheetByName(SHEET_MED);
   if (!medSheet) return { success: false, error: "MedicineLog sheet not found" };
   
-  const logId = "MED_" + new Date().getTime();
-  const dateStr = logData.date; // e.g. "2026-06-05"
-  const timeStr = logData.time; // e.g. "08:30"
+  var logId = "MED_" + new Date().getTime();
+  var dateStr = logData.date; // e.g. "2026-06-05"
+  var timeStr = logData.time; // e.g. "08:30"
   
   // 1. Append log row
   medSheet.appendRow([
@@ -649,17 +701,17 @@ function saveMedicineLog(logData, userEmail) {
   ]);
   
   // 2. Update child's "วันที่กินยาล่าสุด" in child records
-  const dataSheet = ss.getSheetByName(SHEET_DATA);
-  const dataRows = dataSheet.getDataRange().getValues();
-  const headers = dataRows[0];
-  const idxId = getColIndex(headers, "ID");
-  const idxLastDate = getColIndex(headers, "วันที่กินยาล่าสุด");
+  var dataSheet = ss.getSheetByName(SHEET_DATA);
+  var dataRows = dataSheet.getDataRange().getValues();
+  var headers = dataRows[0];
+  var idxId = getColIndex(headers, "ID");
+  var idxLastDate = getColIndex(headers, "วันที่กินยาล่าสุด");
   
   if (idxId !== -1 && idxLastDate !== -1 && logData.taken === "กินยาแล้ว") {
-    for (let i = 1; i < dataRows.length; i++) {
+    for (var i = 1; i < dataRows.length; i++) {
       if (String(dataRows[i][idxId]) === String(logData.childId)) {
         // Date can be stored as Date object or string
-        const parsedDate = new Date(dateStr + "T" + timeStr);
+        var parsedDate = new Date(dateStr + "T" + timeStr);
         dataSheet.getRange(i + 1, idxLastDate + 1).setValue(parsedDate);
         break;
       }
@@ -674,26 +726,26 @@ function saveMedicineLog(logData, userEmail) {
 // ── BATCH SAVE/IMPORT CHILDREN ──────────────────────────────
 function saveChildrenBatch(childrenList, userEmail) {
   setupDatabase();
-  const ss = getSpreadsheet();
-  const dataSheet = ss.getSheetByName(SHEET_DATA);
-  const dataRows = dataSheet.getDataRange().getValues();
-  const headers = dataRows[0];
+  var ss = getSpreadsheet();
+  var dataSheet = ss.getSheetByName(SHEET_DATA);
+  var dataRows = dataSheet.getDataRange().getValues();
+  var headers = dataRows[0];
 
-  const idxId = getColIndex(headers, "ID");
-  const idxName = getColIndex(headers, "ชื่อเด็ก");
+  var idxId = getColIndex(headers, "ID");
+  var idxName = getColIndex(headers, "ชื่อเด็ก");
   
   // Create mapping of existing child ID to row index (1-based)
-  const existingMap = {};
+  var existingMap = {};
   // Create mapping of existing child Name to { id, rowIndex }
-  const nameMap = {};
+  var nameMap = {};
   
   if (idxId !== -1) {
-    for (let i = 1; i < dataRows.length; i++) {
-      const idVal = String(dataRows[i][idxId]);
+    for (var i = 1; i < dataRows.length; i++) {
+      var idVal = String(dataRows[i][idxId]);
       existingMap[idVal] = i + 1;
       
       if (idxName !== -1) {
-        const nameVal = String(dataRows[i][idxName]).trim();
+        var nameVal = String(dataRows[i][idxName]).trim();
         if (nameVal) {
           nameMap[nameVal] = { id: idVal, rowIndex: i + 1 };
         }
@@ -702,20 +754,20 @@ function saveChildrenBatch(childrenList, userEmail) {
   }
 
   // Pre-calculate scores and build rows
-  const newRows = [];
-  const editRows = []; // array of { rowNum, values }
+  var newRows = [];
+  var editRows = []; // array of { rowNum, values }
   
-  let addedCount = 0;
-  let updatedCount = 0;
+  var addedCount = 0;
+  var updatedCount = 0;
 
-  childrenList.forEach(childData => {
-    let id = childData.id;
-    let targetRowIndex = -1;
-    let existingRow = null;
+  childrenList.forEach(function(childData) {
+    var id = childData.id;
+    var targetRowIndex = -1;
+    var existingRow = null;
     
     // Fallback: match by Name if no ID is specified
     if (!id && childData.name) {
-      const cleanName = String(childData.name).trim();
+      var cleanName = String(childData.name).trim();
       if (nameMap[cleanName]) {
         id = nameMap[cleanName].id;
         targetRowIndex = nameMap[cleanName].rowIndex;
@@ -729,14 +781,14 @@ function saveChildrenBatch(childrenList, userEmail) {
     }
     
     // Build merged child record to prevent overwriting existing fields with blanks
-    let mergedChild = {};
+    var mergedChild = {};
     if (existingRow) {
-      headers.forEach((h, idx) => {
-        const canonicalKey = getMappedKey(h);
+      headers.forEach(function(h, idx) {
+        var canonicalKey = getMappedKey(h);
         // Find standard property name mapping
-        let prop = null;
-        for (const p in HEADER_MAPPING) {
-          if (HEADER_MAPPING[p].includes(canonicalKey)) {
+        var prop = null;
+        for (var p in HEADER_MAPPING) {
+          if (HEADER_MAPPING[p].indexOf(canonicalKey) !== -1) {
             // Map keys to match children properties
             if (canonicalKey === "ชื่อเด็ก") prop = "name";
             else if (canonicalKey === "อายุ") prop = "age";
@@ -770,8 +822,8 @@ function saveChildrenBatch(childrenList, userEmail) {
     }
 
     // Override with CSV values
-    const fieldsToOverride = ["name", "age", "house", "moo", "village", "tambon", "amphoe", "province", "lat", "lng", "hct", "weight", "height", "nutrition", "iron", "food", "social", "guardian", "notes"];
-    fieldsToOverride.forEach(field => {
+    var fieldsToOverride = ["name", "age", "house", "moo", "village", "tambon", "amphoe", "province", "lat", "lng", "hct", "weight", "height", "nutrition", "iron", "food", "social", "guardian", "notes"];
+    fieldsToOverride.forEach(function(field) {
       if (childData[field] !== undefined && childData[field] !== null && childData[field] !== "") {
         mergedChild[field] = childData[field];
       }
@@ -784,18 +836,18 @@ function saveChildrenBatch(childrenList, userEmail) {
     mergedChild.id = id;
     
     // Calculate Scores using merged values
-    const hctVal = Number(mergedChild.hct);
-    let hctScore = 0;
+    var hctVal = Number(mergedChild.hct);
+    var hctScore = 0;
     if (hctVal > 0) {
       if (hctVal < 30) hctScore = 2;
       else if (hctVal < 33) hctScore = 1;
     }
     
-    let nutrScore = 0;
+    var nutrScore = 0;
     if (mergedChild.nutrition === "ผอม") nutrScore = 2;
     else if (mergedChild.nutrition === "ค่อนข้างผอม") nutrScore = 1;
     
-    let ironScore = 0;
+    var ironScore = 0;
     if (mergedChild.iron === "ไม่เคยได้รับ" || mergedChild.iron === "ไม่ได้" || mergedChild.iron === "ได้รับยาแต่ไม่ได้กินยา" || mergedChild.iron === "ได้แต่ไม่ได้กิน" || mergedChild.iron === "สม่ำเสมอ") {
       if (mergedChild.iron === "ไม่เคยได้รับ" || mergedChild.iron === "ไม่ได้" || mergedChild.iron === "ได้รับยาแต่ไม่ได้กินยา" || mergedChild.iron === "ได้แต่ไม่ได้กิน") ironScore = 2;
       else ironScore = 0;
@@ -803,24 +855,24 @@ function saveChildrenBatch(childrenList, userEmail) {
       ironScore = 1;
     }
     
-    let foodScore = 0;
+    var foodScore = 0;
     if (mergedChild.food === "ไม่ได้บริโภค") foodScore = 2;
     else if (mergedChild.food === "บางครั้ง") foodScore = 1;
     
-    let socialScore = 0;
+    var socialScore = 0;
     if (mergedChild.social === "ไม่เพียงพอ") socialScore = 2;
     else if (mergedChild.social === "ขัดสน") socialScore = 1;
     
-    const totalScore = hctScore + nutrScore + ironScore + foodScore + socialScore;
+    var totalScore = hctScore + nutrScore + ironScore + foodScore + socialScore;
     
-    let status = "เสี่ยงต่ำ";
+    var status = "เสี่ยงต่ำ";
     if (totalScore >= 4) status = "เสี่ยงสูง";
     else if (totalScore >= 2) status = "เสี่ยงปานกลาง";
 
     // Build row values
-    const rowValues = [];
-    headers.forEach(h => {
-      const canonicalKey = getMappedKey(h);
+    var rowValues = [];
+    headers.forEach(function(h) {
+      var canonicalKey = getMappedKey(h);
       switch(canonicalKey) {
         case "WKT":
           if (mergedChild.lng && mergedChild.lat) {
@@ -872,13 +924,13 @@ function saveChildrenBatch(childrenList, userEmail) {
   });
 
   // Apply edits to existing rows
-  editRows.forEach(item => {
+  editRows.forEach(function(item) {
     dataSheet.getRange(item.rowNum, 1, 1, item.values.length).setValues([item.values]);
   });
 
   // Bulk append new rows
   if (newRows.length > 0) {
-    const startRow = dataSheet.getLastRow() + 1;
+    var startRow = dataSheet.getLastRow() + 1;
     dataSheet.getRange(startRow, 1, newRows.length, headers.length).setValues(newRows);
   }
 
@@ -890,27 +942,27 @@ function saveChildrenBatch(childrenList, userEmail) {
 // ── USER AUTHENTICATION ─────────────────────────────────────
 function verifyUserLogin(loginType, identifier, passwordOrToken) {
   setupDatabase();
-  const ss = getSpreadsheet();
+  var ss = getSpreadsheet();
   if (!ss) return { success: false, error: "ไม่สามารถเชื่อมต่อฐานข้อมูลได้" };
-  const usersSheet = ss.getSheetByName(SHEET_USERS);
+  var usersSheet = ss.getSheetByName(SHEET_USERS) || ss.getSheetByName("Users");
   if (!usersSheet) return { success: false, error: "ไม่พบแผ่นงาน Users" };
   
-  const rows = usersSheet.getDataRange().getValues();
-  const headers = rows[0];
-  const idxId = headers.indexOf("ID");
-  const idxName = headers.indexOf("Name");
-  const idxRole = headers.indexOf("Role");
-  const idxEmail = headers.indexOf("Email");
-  const idxLineUserId = headers.indexOf("LineUserId");
-  const idxPhone = headers.indexOf("Phone");
-  const idxAssignedVillage = headers.indexOf("AssignedVillage");
-  const idxStatus = headers.indexOf("Status");
+  var rows = usersSheet.getDataRange().getValues();
+  var headers = rows[0];
+  var idxId = headers.indexOf("ID");
+  var idxName = headers.indexOf("Name");
+  var idxRole = headers.indexOf("Role");
+  var idxEmail = headers.indexOf("Email");
+  var idxLineUserId = headers.indexOf("LineUserId");
+  var idxPhone = headers.indexOf("Phone");
+  var idxAssignedVillage = headers.indexOf("AssignedVillage");
+  var idxStatus = headers.indexOf("Status");
   
-  for (let i = 1; i < rows.length; i++) {
-    const row = rows[i];
-    if (idxStatus !== -1 && row[idxStatus] !== "Active") continue;
+  for (var i = 1; i < rows.length; i++) {
+    var row = rows[i];
+    var status = idxStatus !== -1 ? String(row[idxStatus]).trim() : "Active";
     
-    let matched = false;
+    var matched = false;
     if (loginType === "SSO" && idxEmail !== -1 && String(row[idxEmail]).trim().toLowerCase() === String(identifier).trim().toLowerCase()) {
       matched = true;
     } else if (loginType === "OTP" && idxPhone !== -1 && String(row[idxPhone]).replace(/[- ]/g, "") === String(identifier).replace(/[- ]/g, "")) {
@@ -920,7 +972,7 @@ function verifyUserLogin(loginType, identifier, passwordOrToken) {
     }
     
     if (matched) {
-      const user = {
+      var user = {
         id: idxId !== -1 ? row[idxId] : "",
         name: idxName !== -1 ? row[idxName] : "",
         role: idxRole !== -1 ? row[idxRole] : "",
@@ -928,14 +980,87 @@ function verifyUserLogin(loginType, identifier, passwordOrToken) {
         lineUserId: idxLineUserId !== -1 ? row[idxLineUserId] : "",
         phone: idxPhone !== -1 ? row[idxPhone] : "",
         assignedVillage: idxAssignedVillage !== -1 ? row[idxAssignedVillage] : "",
-        status: idxStatus !== -1 ? row[idxStatus] : ""
+        status: status
       };
+
+      // ตรวจสอบสถานะ - Pending ให้กลับ error พิเศษ
+      if (status === "Pending") {
+        return { success: false, pending: true, user: user, error: "บัญชีของคุณกำลังรอการอนุมัติจากผู้ดูแลระบบ" };
+      }
+      // ตรวจสอบสถานะ - Inactive
+      if (status === "Inactive" || status === "Disabled") {
+        return { success: false, error: "บัญชีของคุณถูกระงับการใช้งาน กรุณาติดต่อผู้ดูแลระบบ" };
+      }
       
       logActivity("เข้าสู่ระบบ", "เข้าสู่ระบบผ่าน " + loginType, user.email || user.phone || user.lineUserId);
       return { success: true, user: user };
     }
   }
   
-  return { success: false, error: "ไม่พบบัญชีผู้ใช้งานในระบบ หรือไม่มีสิทธิ์เข้าถึง" };
+  return { success: false, error: "ไม่พบบัญชีผู้ใช้งานในระบบ (LINE ID: " + identifier + ")" };
 }
 
+function include(filename) {
+  return HtmlService.createHtmlOutputFromFile(filename).getContent();
+}
+
+// -- USER MANAGEMENT BACKEND ----------------------------------
+function getUsersList() {
+  setupDatabase();
+  var ss = getSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET_USERS);
+  var rows = sheet.getDataRange().getValues();
+  var headers = rows[0];
+
+  var users = [];
+  for (var i = 1; i < rows.length; i++) {
+    var user = {};
+    headers.forEach(function(h, idx) {
+      var key = h.charAt(0).toLowerCase() + h.slice(1);
+      if (h === "ID") key = "id"; // Fix ID mapping
+      user[key] = rows[i][idx];
+    });
+    // Fallback ID if missing
+    if (!user.id) user.id = "U" + i;
+    users.push(user);
+  }
+  return users;
+}
+
+function saveUserRecord(userData) {
+  var ss = getSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET_USERS);
+  var rows = sheet.getDataRange().getValues();
+  var headers = rows[0];
+
+  var idxId = headers.indexOf("ID");
+  var rowValues = headers.map(function(h) {
+    var key = h.charAt(0).toLowerCase() + h.slice(1);
+    if (h === "ID") key = "id"; // Fix ID mapping
+    return userData[key] || "";
+  });
+
+  var targetRow = -1;
+  if (userData.id) {
+    for (var i = 1; i < rows.length; i++) {
+      if (String(rows[i][idxId]) === String(userData.id)) {
+        targetRow = i + 1;
+        break;
+      }
+    }
+  }
+
+  if (targetRow !== -1) {
+    sheet.getRange(targetRow, 1, 1, rowValues.length).setValues([rowValues]);
+    logActivity("แก้ไขผู้ใช้งาน", "อัปเดตข้อมูลผู้ใช้: " + userData.name);
+  } else {
+    if (idxId !== -1 && !rowValues[idxId]) {
+      rowValues[idxId] = "USR" + new Date().getTime();
+    }
+    sheet.appendRow(rowValues);
+    logActivity("เพิ่มผู้ใช้งาน", "เพิ่มผู้ใช้ใหม่: " + userData.name);
+  }
+
+  SpreadsheetApp.flush();
+  return { success: true };
+}
