@@ -1,13 +1,6 @@
 {
   "indexes": [
     {
-      "collectionGroup": "activityLog",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "timestamp", "order": "DESCENDING" }
-      ]
-    },
-    {
       "collectionGroup": "children",
       "queryScope": "COLLECTION",
       "fields": [
@@ -18,3 +11,4 @@
   ],
   "fieldOverrides": []
 }
+
