@@ -86,6 +86,54 @@ async function linkOrCreateProfile(uid, matchField, matchValue, defaults) {
   return { id: uid, ...created };
 }
 
+async function findUserByField(field, value) {
+  const q = await db.collection("users").where(field, "==", value).limit(1).get();
+  if (q.empty) return null;
+  return { id: q.docs[0].id, ref: q.docs[0].ref, data: q.docs[0].data() };
+}
+
+// ── AUTH: PHONE/OTP (VHV) ────────────────────────────────────────────────
+// The SMS code itself is generated/verified client-side (no SMS provider
+// wired up) — these two calls only check phone-number eligibility and, once
+// the client accepts the code, establish a real Firebase Auth session for a
+// pre-registered phone number (staff must have added the user via saveUserRecord).
+exports.checkOtpEligibility = onCall(async (request) => {
+  const phone = request.data && request.data.phone;
+  if (!phone) throw new HttpsError("invalid-argument", "ไม่พบเบอร์โทรศัพท์");
+  const match = await findUserByField("phone", phone);
+  if (!match) return { success: false, error: `ไม่พบบัญชีผู้ใช้งานในระบบ (เบอร์โทร: ${phone})` };
+  if (match.data.status === "Pending") return { success: false, pending: true, user: { id: match.id, ...match.data } };
+  if (match.data.status === "Inactive" || match.data.status === "Disabled") {
+    return { success: false, error: "บัญชีของคุณถูกระงับการใช้งาน กรุณาติดต่อผู้ดูแลระบบ" };
+  }
+  return { success: true };
+});
+
+exports.signInPhoneOtp = onCall(async (request) => {
+  const phone = request.data && request.data.phone;
+  if (!phone) throw new HttpsError("invalid-argument", "ไม่พบเบอร์โทรศัพท์");
+  const match = await findUserByField("phone", phone);
+  if (!match) throw new HttpsError("not-found", `ไม่พบบัญชีผู้ใช้งานในระบบ (เบอร์โทร: ${phone})`);
+  if (match.data.status === "Pending") return { success: false, pending: true, user: { id: match.id, ...match.data } };
+  if (match.data.status === "Inactive" || match.data.status === "Disabled") {
+    throw new HttpsError("permission-denied", "บัญชีของคุณถูกระงับการใช้งาน กรุณาติดต่อผู้ดูแลระบบ");
+  }
+
+  const uid = match.data.authUid || `phone_${String(phone).replace(/[^0-9]/g, "")}`;
+  let profile = match.data;
+  if (match.id !== uid) {
+    profile = { ...match.data, authUid: uid, linkedAt: FieldValue.serverTimestamp() };
+    await db.collection("users").doc(uid).set(profile, { merge: true });
+    await match.ref.delete();
+  } else if (!match.data.authUid) {
+    await match.ref.set({ authUid: uid }, { merge: true });
+  }
+
+  const customToken = await admin.auth().createCustomToken(uid);
+  await logActivity("เข้าสู่ระบบ", "เข้าสู่ระบบผ่าน OTP", phone);
+  return { success: true, customToken, user: { id: uid, ...profile } };
+});
+
 // ── AUTH: LINE LOGIN CODE EXCHANGE (public — this call establishes auth) ────
 exports.exchangeLineLogin = onCall({ secrets: [LINE_CLIENT_SECRET] }, async (request) => {
   const code = request.data && request.data.code;

@@ -1,4 +1,3 @@
-<script>
 /**
  * IRON ZERO RISK -- CORE JAVASCRIPT
  */
@@ -2176,4 +2175,3 @@ window.onload = function() {
   window.initAuthSession();
   window.initScrollNav();
 };
-</script>
