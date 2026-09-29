@@ -1,0 +1,49 @@
+[debug] [2026-09-29T09:02:48.261Z] ----------------------------------------------------------------------
+[debug] [2026-09-29T09:02:48.265Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\KITTIPUN\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js deploy
+[debug] [2026-09-29T09:02:48.266Z] CLI Version:   15.22.4
+[debug] [2026-09-29T09:02:48.266Z] Platform:      win32
+[debug] [2026-09-29T09:02:48.266Z] Node Version:  v22.17.0
+[debug] [2026-09-29T09:02:48.266Z] Detected Agent: unknown
+[debug] [2026-09-29T09:02:48.267Z] Time:          Tue Sep 29 2026 16:02:48 GMT+0700 (เวลาอินโดจีน)
+[debug] [2026-09-29T09:02:48.267Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-09-29T09:02:51.048Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-09-29T09:02:51.049Z] > authorizing via signed-in user (prangsri06@gmail.com)
+[debug] [2026-09-29T09:02:51.049Z] [iam] checking project attendance-v1-adb30 for permissions ["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get","firebasehosting.sites.update"]
+[debug] [2026-09-29T09:02:51.051Z] Checked if tokens are valid: true, expires at: 1790676150138
+[debug] [2026-09-29T09:02:51.051Z] Checked if tokens are valid: true, expires at: 1790676150138
+[debug] [2026-09-29T09:02:51.053Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/attendance-v1-adb30:testIamPermissions [none]
+[debug] [2026-09-29T09:02:51.053Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/attendance-v1-adb30:testIamPermissions  x-goog-user-project=attendance-v1-adb30
+[debug] [2026-09-29T09:02:51.053Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/attendance-v1-adb30:testIamPermissions {"permissions":["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get","firebasehosting.sites.update"]}
+[debug] [2026-09-29T09:02:52.241Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/attendance-v1-adb30:testIamPermissions 200
+[debug] [2026-09-29T09:02:52.241Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/attendance-v1-adb30:testIamPermissions {"permissions":["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get","firebasehosting.sites.update"]}
+[debug] [2026-09-29T09:02:52.242Z] Checked if tokens are valid: true, expires at: 1790676150138
+[debug] [2026-09-29T09:02:52.242Z] Checked if tokens are valid: true, expires at: 1790676150138
+[debug] [2026-09-29T09:02:52.242Z] >>> [apiv2][query] POST https://iam.googleapis.com/v1/projects/attendance-v1-adb30/serviceAccounts/attendance-v1-adb30@appspot.gserviceaccount.com:testIamPermissions [none]
+[debug] [2026-09-29T09:02:52.242Z] >>> [apiv2][body] POST https://iam.googleapis.com/v1/projects/attendance-v1-adb30/serviceAccounts/attendance-v1-adb30@appspot.gserviceaccount.com:testIamPermissions {"permissions":["iam.serviceAccounts.actAs"]}
+[debug] [2026-09-29T09:02:53.737Z] <<< [apiv2][status] POST https://iam.googleapis.com/v1/projects/attendance-v1-adb30/serviceAccounts/attendance-v1-adb30@appspot.gserviceaccount.com:testIamPermissions 404
+[debug] [2026-09-29T09:02:53.737Z] <<< [apiv2][body] POST https://iam.googleapis.com/v1/projects/attendance-v1-adb30/serviceAccounts/attendance-v1-adb30@appspot.gserviceaccount.com:testIamPermissions {"error":{"code":404,"message":"Unknown service account","status":"NOT_FOUND"}}
+[debug] [2026-09-29T09:02:53.737Z] [functions] service account IAM check errored, deploy may fail: Request to https://iam.googleapis.com/v1/projects/attendance-v1-adb30/serviceAccounts/attendance-v1-adb30@appspot.gserviceaccount.com:testIamPermissions had HTTP Error: 404, Unknown service account {"name":"FirebaseError","children":[],"context":{"body":{"error":{"code":404,"message":"Unknown service account","status":"NOT_FOUND"}},"response":{"statusCode":404}},"exit":1,"message":"Request to https://iam.googleapis.com/v1/projects/attendance-v1-adb30/serviceAccounts/attendance-v1-adb30@appspot.gserviceaccount.com:testIamPermissions had HTTP Error: 404, Unknown service account","status":404}
+[debug] [2026-09-29T09:02:53.740Z] Checked if tokens are valid: true, expires at: 1790676150138
+[debug] [2026-09-29T09:02:53.740Z] Checked if tokens are valid: true, expires at: 1790676150138
+[debug] [2026-09-29T09:02:53.740Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/attendance-v1-adb30 [none]
+[debug] [2026-09-29T09:02:54.162Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/attendance-v1-adb30 200
+[debug] [2026-09-29T09:02:54.163Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/attendance-v1-adb30 {"projectId":"attendance-v1-adb30","projectNumber":"145096380096","displayName":"Attendance V1","name":"projects/attendance-v1-adb30","resources":{"hostingSite":"attendance-v1-adb30"},"state":"ACTIVE","labels":{"firebase":"enabled"},"etag":"1_a34969be-9663-4551-a51b-c02d65293bc7"}
+[info] 
+[info] === Deploying to 'attendance-v1-adb30'...
+[info] 
+[info] i  deploying firestore, functions, hosting 
+[info] i  firestore: ensuring required API firestore.googleapis.com is enabled... 
+[debug] [2026-09-29T09:02:54.177Z] Checked if tokens are valid: true, expires at: 1790676150138
+[debug] [2026-09-29T09:02:54.177Z] Checked if tokens are valid: true, expires at: 1790676150138
+[debug] [2026-09-29T09:02:54.177Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/attendance-v1-adb30/services/firestore.googleapis.com [none]
+[debug] [2026-09-29T09:02:54.177Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/attendance-v1-adb30/services/firestore.googleapis.com  x-goog-user-project=attendance-v1-adb30
+[debug] [2026-09-29T09:02:55.900Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/attendance-v1-adb30/services/firestore.googleapis.com 200
+[debug] [2026-09-29T09:02:55.900Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/attendance-v1-adb30/services/firestore.googleapis.com [omitted]
+[warn] !  firestore: missing required API firestore.googleapis.com. Enabling now... 
+[debug] [2026-09-29T09:02:55.901Z] Checked if tokens are valid: true, expires at: 1790676150138
+[debug] [2026-09-29T09:02:55.901Z] Checked if tokens are valid: true, expires at: 1790676150138
+[debug] [2026-09-29T09:02:55.901Z] >>> [apiv2][query] POST https://serviceusage.googleapis.com/v1/projects/attendance-v1-adb30/services/firestore.googleapis.com:enable [none]
+[debug] [2026-09-29T09:02:55.901Z] >>> [apiv2][(partial)header] POST https://serviceusage.googleapis.com/v1/projects/attendance-v1-adb30/services/firestore.googleapis.com:enable  x-goog-user-project=attendance-v1-adb30
+[debug] [2026-09-29T09:02:56.540Z] <<< [apiv2][status] POST https://serviceusage.googleapis.com/v1/projects/attendance-v1-adb30/services/firestore.googleapis.com:enable 200
+[debug] [2026-09-29T09:02:56.540Z] <<< [apiv2][body] POST https://serviceusage.googleapis.com/v1/projects/attendance-v1-adb30/services/firestore.googleapis.com:enable [omitted]
