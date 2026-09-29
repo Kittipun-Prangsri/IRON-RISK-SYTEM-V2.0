@@ -20,14 +20,6 @@ function unwrap(content, tag) {
 function buildIndex() {
   let html = read("Index.html");
 
-  // GAS-side auth template injection (`<?!= lineUser ?>` / `<?!= lineError ?>`) no
-  // longer applies — LINE Login is now resolved client-side by firebase-adapter.js
-  // via the exchangeLineLogin callable, not by server-templated doGet().
-  html = html.replace(
-    /<script>\s*\/\/ Safe injection of lineUser from GAS template[\s\S]*?<\/script>\s*/,
-    ""
-  );
-
   html = html.replace(/<\?!= include\('Stylesheet'\); \?>/, '<link rel="stylesheet" href="assets/css/style.css">');
   html = html.replace(/<\?!= include\('Sidebar'\); \?>/, read("Sidebar.html"));
   html = html.replace(/<\?!= include\('Footer'\); \?>/, read("Footer.html"));

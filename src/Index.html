@@ -11,31 +11,6 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <!-- LINE LIFF SDK -->
-  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-  
-  <script>
-    // Safe injection of lineUser from GAS template
-    var LINE_SESSION_USER = null;
-    var LINE_SESSION_ERROR = null;
-    try {
-      // Use backticks to handle potential newlines and single/double quotes safely.
-      var rawSession = `<?!= lineUser ?>`;
-      if (rawSession && rawSession !== '<?' + '!= lineUser ?>' && rawSession !== 'null') {
-        LINE_SESSION_USER = JSON.parse(rawSession);
-      }
-    } catch (e) {
-      console.warn("GAS lineUser parse failed:", e);
-    }
-    try {
-      var rawError = `<?!= lineError ?>`;
-      if (rawError && rawError !== '<?' + '!= lineError ?>' && rawError !== 'null') {
-        LINE_SESSION_ERROR = JSON.parse(rawError);
-      }
-    } catch (e) {
-      console.warn("GAS lineError parse failed:", e);
-    }
-  </script>
 
   <?!= include('Stylesheet'); ?>
 </head>

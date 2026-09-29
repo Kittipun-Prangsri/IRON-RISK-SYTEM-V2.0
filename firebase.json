@@ -46,7 +46,6 @@
     },
     "ui": {
       "enabled": true
-    },
-    "singleProject": true
+    }
   }
 }
