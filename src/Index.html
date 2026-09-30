@@ -67,46 +67,27 @@
               <p class="text-muted" style="font-size: 0.9rem;">ยืนยันตัวตนด้วยบัญชี HOSxP หรือ HealthID (moph.id.th)</p>
             </div>
             
-            <div class="form-group mb-3">
-              <label class="form-label fw-bold text-dark" style="font-size: 0.85rem;">ชื่อผู้ใช้งาน HOSxP (Username / Login Name)</label>
-              <div class="input-group">
-                <span class="input-group-text bg-light border-end-0 text-muted"><i class="fas fa-user"></i></span>
-                <input type="text" class="form-control bg-light border-start-0 ps-0" id="login-hosxp-user" placeholder="เช่น 0816 หรือ loginname" style="height: 44px; font-size: 0.9rem;">
-              </div>
-            </div>
-            
-            <div class="form-group mb-4">
-              <label class="form-label fw-bold text-dark" style="font-size: 0.85rem;">รหัสผ่าน HOSxP (Password)</label>
-              <div class="input-group">
-                <span class="input-group-text bg-light border-end-0 text-muted"><i class="fas fa-lock"></i></span>
-                <input type="password" class="form-control bg-light border-start-0 ps-0" id="login-hosxp-password" placeholder="กรอกรหัสผ่าน HOSxP" style="height: 44px; font-size: 0.9rem;">
-              </div>
-            </div>
-            
-            <button class="btn w-100 mb-4 fw-bold text-white d-flex align-items-center justify-content-center gap-2" onclick="submitHOSxPLogin()" style="background-color: #0f766e; height: 44px; border-radius: 8px; font-size: 0.95rem; box-shadow: 0 4px 6px rgba(15, 118, 110, 0.2);">
-              เข้าสู่ระบบด้วย HOSxP Account <i class="fas fa-arrow-right"></i>
-            </button>
-            
-            <div class="position-relative text-center mb-4">
-              <hr class="text-muted opacity-25">
-              <span class="position-absolute top-50 start-50 translate-middle bg-white px-2 text-muted" style="font-size: 0.8rem; white-space: nowrap;">หรือยืนยันตัวตนผ่านกระทรวงสาธารณสุข</span>
-            </div>
-            
-            <button class="btn w-100 text-white d-flex align-items-center justify-content-between px-3" onclick="handleSSOLogin('providerid')" style="background-color: #0f766e; height: 48px; border-radius: 8px; box-shadow: 0 4px 6px rgba(15, 118, 110, 0.2);">
-              <div class="d-flex align-items-center gap-2">
-                <div class="bg-white rounded d-flex align-items-center justify-content-center" style="width: 28px; height: 28px;">
-                  <span class="text-success fw-bold" style="font-size: 0.5rem; line-height: 1.1; text-align: center;">PROVIDER<br>ID</span>
+            <form>
+              <div class="mb-3">
+                <label class="form-label text-muted small fw-bold">ชื่อผู้ใช้งาน HOSxP (Username / Login Name)</label>
+                <div class="input-group">
+                  <span class="input-group-text bg-light border-end-0"><i class="fas fa-user text-muted"></i></span>
+                  <input type="text" class="form-control bg-light border-start-0" id="login-staff-email" placeholder="เช่น 0816 หรือ loginname">
                 </div>
-                <span class="fw-bold" style="font-size: 0.9rem;">เข้าสู่ระบบด้วย MOPH ID (Provider ID)</span>
               </div>
-              <i class="fas fa-external-link-alt opacity-75" style="font-size: 0.8rem;"></i>
-            </button>
-            
-            <div class="text-center mt-4">
-              <p class="text-muted mb-0" style="font-size: 0.75rem;">
-                * รองรับ HealthID Single Sign-On (SSO) บุคลากรสาธารณสุข กระทรวงสาธารณสุข ('moph.id.th')
-              </p>
-            </div>
+              
+              <div class="mb-4">
+                <label class="form-label text-muted small fw-bold">รหัสผ่าน HOSxP (Password)</label>
+                <div class="input-group">
+                  <span class="input-group-text bg-light border-end-0"><i class="fas fa-lock text-muted"></i></span>
+                  <input type="password" class="form-control bg-light border-start-0" id="login-staff-password" placeholder="กรอกรหัสผ่าน HOSxP">
+                </div>
+              </div>
+              
+              <button type="button" class="btn btn-success w-100 py-2 fw-bold" style="background-color: #0b5c47; border-color: #0b5c47;" onclick="window.submitStaffEmailLogin()">
+                เข้าสู่ระบบด้วย HOSxP Account <i class="fas fa-arrow-right ms-2"></i>
+              </button>
+            </form>
           </div>
         </div>
       </div>
