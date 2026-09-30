@@ -4,6 +4,8 @@
  */
 
 // -- ENVIRONMENT & STORAGE HELPERS ----------------------------
+var isGAS = typeof google !== 'undefined' && google.script && google.script.run;
+
 var safeStorage = {
   getItem: function(key) {
     try { return (typeof localStorage !== 'undefined') ? localStorage.getItem(key) : null; } catch (e) { return null; }
@@ -38,58 +40,40 @@ window.showToast = function(message, type) {
 };
 
 /**
- * แสดงหน้า "รอการอนุมัติ" สำหรับผู้ใช้ที่เพิ่งลงทะเบียนใหม่ (Provider ID / LINE / อื่นๆ)
+ * แสดงหน้า "รอการอนุมัติ" แบบสวยงาม สำหรับ LINE user ที่เพิ่งลงทะเบียนใหม่
  */
-function escapeHtml(value) {
-  return String(value == null ? '' : value).replace(/[&<>"']/g, function(c) {
-    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-  });
-}
-
 window.showPendingApprovalScreen = function(user, message) {
   var loginContainer = document.getElementById('login-container');
   if (!loginContainer) return;
-  user = user || {};
 
-  // Badge colour/icon and the identity lines depend on how the user signed in.
-  var badge, idLines;
-  if (user.providerId) {
-    badge = { color: '#008f7a', icon: 'fas fa-user-doctor' };
-    idLines = ['Provider ID: ' + user.providerId, user.position, user.hospitalName];
-  } else if (user.lineUserId) {
-    badge = { color: '#06c755', icon: 'fab fa-line' };
-    idLines = ['LINE ID: ' + user.lineUserId];
-  } else {
-    badge = { color: '#64748b', icon: 'fas fa-user' };
-    idLines = [user.email || user.phone];
-  }
-  var displayName = user.displayName || user.name || 'ผู้ใช้งานใหม่';
+  var avatar = (user && user.avatarUrl) ? user.avatarUrl : '';
+  var displayName = (user && (user.displayName || user.name)) ? (user.displayName || user.name) : 'ผู้ใช้งาน LINE';
+  var lineId = (user && user.lineUserId) ? user.lineUserId : '';
   var msg = message || 'บัญชีของคุณกำลังรอการอนุมัติจากผู้ดูแลระบบ';
-  var avatarInner = user.avatarUrl
-    ? '<img src="' + escapeHtml(user.avatarUrl) + '" style="width:100%;height:100%;object-fit:cover;">'
-    : '<div style="width:100%;height:100%;background:' + badge.color + ';display:flex;align-items:center;justify-content:center;"><i class="' + badge.icon + '" style="color:#fff;font-size:36px;"></i></div>';
-  var idHtml = idLines.filter(Boolean).map(function(line) {
-    return '<p style="margin:4px 0 0;font-size:0.8rem;color:var(--text-muted);">' + escapeHtml(line) + '</p>';
-  }).join('');
 
   loginContainer.innerHTML = [
     '<div class="login-card" style="text-align:center;max-width:440px;">',
-    '  <div style="display:flex;flex-direction:column;align-items:center;">',
-    '    <div style="width:80px;height:80px;border-radius:50%;overflow:hidden;margin:0 auto 12px;border:3px solid ' + badge.color + ';box-shadow:0 0 0 6px rgba(0,0,0,0.12);">',
-    avatarInner,
+    '  <div class="login-header">',
+    '    <div class="login-logo">',
+    '      <div style="width:80px;height:80px;border-radius:50%;overflow:hidden;margin:0 auto 12px;border:3px solid #06c755;box-shadow:0 0 0 6px rgba(6,199,85,0.15);">',
+    avatar ? '      <img src="' + avatar + '" style="width:100%;height:100%;object-fit:cover;">' : '      <div style="width:100%;height:100%;background:#06c755;display:flex;align-items:center;justify-content:center;"><i class="fab fa-line" style="color:#fff;font-size:40px;"></i></div>',
+    '      </div>',
+    '      <h2 style="margin:0;font-size:1.1rem;font-weight:600;color:var(--text-primary);">' + displayName + '</h2>',
+    '      <p style="margin:4px 0 0;font-size:0.78rem;color:var(--text-muted);">LINE ID: ' + lineId + '</p>',
     '    </div>',
-    '    <h2 style="margin:0;font-size:1.1rem;font-weight:600;color:var(--text-primary);">' + escapeHtml(displayName) + '</h2>',
-    idHtml,
+    '    <div style="margin:24px 0;padding:16px;background:rgba(234,179,8,0.1);border:1px solid rgba(234,179,8,0.3);border-radius:12px;">',
+    '      <i class="fas fa-clock" style="font-size:2rem;color:#eab308;margin-bottom:8px;display:block;"></i>',
+    '      <h3 style="margin:0 0 8px;color:#eab308;font-size:1rem;">รอการอนุมัติ</h3>',
+    '      <p style="margin:0;font-size:0.85rem;color:var(--text-secondary);line-height:1.5;">' + msg + '</p>',
+    '    </div>',
+    '    <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:20px;">กรุณาติดต่อผู้ดูแลระบบเพื่อเปิดสิทธิ์การใช้งาน<br>หลังจากได้รับการอนุมัติแล้วจึงจะสามารถเข้าใช้งานได้</p>',
+    '    <button onclick="window.location.reload()" class="btn btn-success" style="width:100%;margin-bottom:12px;">',
+    '      <i class="fas fa-sync-alt"></i> ตรวจสอบสถานะใหม่',
+    '    </button>',
+    '    <button onclick="window.location.href=window.location.pathname" class="btn btn-secondary" style="width:100%;">',
+    '      <i class="fas fa-arrow-left"></i> กลับหน้าเข้าสู่ระบบ',
+    '    </button>',
     '  </div>',
-    '  <div style="margin:24px 0;padding:16px;background:rgba(234,179,8,0.1);border:1px solid rgba(234,179,8,0.3);border-radius:12px;">',
-    '    <i class="fas fa-clock" style="font-size:2rem;color:#eab308;margin-bottom:8px;display:block;"></i>',
-    '    <h3 style="margin:0 0 8px;color:#eab308;font-size:1rem;">รอการอนุมัติ</h3>',
-    '    <p style="margin:0;font-size:0.85rem;color:var(--text-secondary);line-height:1.5;">' + escapeHtml(msg) + '</p>',
-    '  </div>',
-    '  <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:20px;">กรุณาติดต่อผู้ดูแลระบบเพื่อเปิดสิทธิ์การใช้งาน<br>หลังจากได้รับการอนุมัติแล้ว ให้กดเข้าสู่ระบบอีกครั้ง</p>',
-    '  <button onclick="window.location.href=window.location.pathname" class="btn btn-primary" style="width:100%;">',
-    '    <i class="fas fa-arrow-left"></i> กลับหน้าเข้าสู่ระบบ',
-    '  </button>',
     '</div>'
   ].join('\n');
 };
@@ -142,7 +126,8 @@ window.navigate = function(pageId) {
 
 window.setSession = function(user) {
   currentUser = user;
-
+  safeStorage.setItem("iron_zero_session", JSON.stringify(currentUser));
+  
   document.getElementById('login-container').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
   
@@ -167,32 +152,45 @@ window.triggerDevLogin = function() {
 };
 
 window.handleSSOLogin = function(provider) {
-  if (provider === 'healthid') {
-    window.handleHealthIdLogin();
+  window.showLoading(true, "กำลังเชื่อมต่อกับ " + (provider === 'google' ? 'Google' : provider === 'microsoft' ? 'Microsoft' : 'MOPH ID') + " SSO...");
+  
+  if (provider === 'google' && isGAS) {
+    google.script.run
+      .withSuccessHandler(function(res) {
+        window.showLoading(false);
+        if (res.success) {
+          window.setSession(res.user);
+        } else {
+          window.showToast("ไม่พบสิทธิ์การใช้งานของ Google Account นี้ กรุณาติดต่อผู้ดูแลระบบ", "info");
+        }
+      })
+      .withFailureHandler(function(err) {
+        window.showLoading(false);
+        window.showToast(err.toString(), "error");
+      })
+      .getGoogleUser();
     return;
   }
-  if (provider === 'providerid') {
-    window.handleProviderIdLogin();
-    return;
-  }
-  if (provider !== 'google') {
-    window.showToast("ผู้ให้บริการนี้ยังไม่เปิดใช้งาน กรุณาใช้ Google, Health ID หรือ LINE", "info");
-    return;
-  }
-  window.showLoading(true, "กำลังเชื่อมต่อกับ Google SSO...");
-  window.fb.signInGoogle().then(function(res) {
+
+  setTimeout(function() {
     window.showLoading(false);
-    if (res.pending) {
-      window.showPendingApprovalScreen(res.user, "บัญชีของคุณกำลังรอการอนุมัติจากผู้ดูแลระบบ");
-    } else if (res.success) {
-      window.setSession(res.user);
+    var mockStaff = MOCK_USERS[0]; 
+    if (provider === 'microsoft') { mockStaff = MOCK_USERS[1]; }
+    
+    if (isGAS) {
+      google.script.run
+        .withSuccessHandler(function(res) {
+          if (res.success) { window.setSession(res.user); }
+          else { window.showToast(res.error || "เข้าสู่ระบบล้มเหลว", "error"); }
+        })
+        .withFailureHandler(function(err) {
+          window.showToast(err.toString(), "error");
+        })
+        .verifyUserLogin("SSO", mockStaff.email, "");
     } else {
-      window.showToast(res.error || "ไม่พบสิทธิ์การใช้งานของ Google Account นี้ กรุณาติดต่อผู้ดูแลระบบ", "info");
+      window.setSession(mockStaff);
     }
-  }).catch(function(err) {
-    window.showLoading(false);
-    window.showToast(err && err.message ? err.message : String(err), "error");
-  });
+  }, 1000);
 };
 
 // -- STATE MANAGEMENT -----------------------------------------
@@ -396,44 +394,90 @@ var CSV_HEADER_MAP = {
 
 // -- SYSTEM INITIALIZATION ------------------------------------
 
+window.initLocalDb = function() {
+  if (!safeStorage.getItem("iron_zero_children")) {
+    safeStorage.setItem("iron_zero_children", JSON.stringify(MOCK_CHILDREN));
+  }
+  if (!safeStorage.getItem("iron_zero_logs")) {
+    safeStorage.setItem("iron_zero_logs", JSON.stringify(MOCK_LOGS));
+  }
+  if (!safeStorage.getItem("iron_zero_med_logs")) {
+    safeStorage.setItem("iron_zero_med_logs", JSON.stringify([]));
+  }
+};
+
 window.refreshData = function() {
   window.showLoading(true, "กำลังดึงข้อมูลฐานข้อมูลล่าสุด...");
-
-  window.backend
-    .withSuccessHandler(function(data) {
-      allChildren = data.children;
-      activities = data.logs;
-      villagesData = data.villages;
-
+  
+  if (isGAS) {
+    google.script.run
+      .withSuccessHandler(function(data) {
+        allChildren = data.children;
+        activities = data.logs;
+        villagesData = data.villages;
+        
+        if (currentUser && currentUser.role === 'อสม.') {
+          allChildren = allChildren.filter(function(c) { return c.village === currentUser.assignedVillage; });
+          villagesData = {};
+          villagesData[currentUser.assignedVillage] = allChildren.length;
+          activities = activities.filter(function(log) {
+            return allChildren.some(function(c) { return log.details.indexOf(c.name) !== -1 || log.details.indexOf(c.id) !== -1; }) || log.user === (currentUser.email || currentUser.name);
+          });
+        }
+        
+        var elEmail = document.getElementById('s-email');
+        var elSheet = document.getElementById('s-sheet');
+        var elUpdated = document.getElementById('s-updated');
+        if (elEmail) { elEmail.textContent = data.userEmail; }
+        if (elSheet) { elSheet.textContent = data.sheetName; }
+        if (elUpdated) { elUpdated.textContent = data.lastUpdated; }
+        
+        var elEmailInput = document.getElementById('s-email-input');
+        var elSheetIdInput = document.getElementById('s-sheet-id-input');
+        var elLastUpdatedAbout = document.getElementById('s-last-updated-about');
+        if (elEmailInput) { elEmailInput.value = data.userEmail; }
+        if (elSheetIdInput) { elSheetIdInput.value = data.sheetName; }
+        if (elLastUpdatedAbout) { elLastUpdatedAbout.textContent = data.lastUpdated; }
+        
+        window.updateUI();
+        window.showLoading(false);
+        window.showToast("รีเฟรชข้อมูลฐานข้อมูลเรียบร้อย ✅");
+      })
+      .withFailureHandler(function(err) {
+        window.showLoading(false);
+        window.showToast("รีเฟรชข้อมูลล้มเหลว: " + err, "error");
+      })
+      .getData();
+  } else {
+    setTimeout(function() {
+      window.initLocalDb();
+      allChildren = JSON.parse(safeStorage.getItem("iron_zero_children")) || [];
+      activities = JSON.parse(safeStorage.getItem("iron_zero_logs")) || [];
+      
       if (currentUser && currentUser.role === 'อสม.') {
+        allChildren = allChildren.filter(function(c) { return c.village === currentUser.assignedVillage; });
         activities = activities.filter(function(log) {
-          return allChildren.some(function(c) { return log.details.indexOf(c.name) !== -1 || log.details.indexOf(c.id) !== -1; }) || log.user === (currentUser.email || currentUser.name);
+          return allChildren.some(function(c) { return log.details.indexOf(c.name) !== -1 || log.details.indexOf(c.id) !== -1; }) || log.user === currentUser.name;
         });
       }
-
+      
+      villagesData = {};
+      allChildren.forEach(function(c) {
+        if (c.village) { villagesData[c.village] = (villagesData[c.village] || 0) + 1; }
+      });
+      
       var elEmail = document.getElementById('s-email');
       var elSheet = document.getElementById('s-sheet');
       var elUpdated = document.getElementById('s-updated');
-      if (elEmail) { elEmail.textContent = data.userEmail; }
-      if (elSheet) { elSheet.textContent = data.sheetName; }
-      if (elUpdated) { elUpdated.textContent = data.lastUpdated; }
-
-      var elEmailInput = document.getElementById('s-email-input');
-      var elSheetIdInput = document.getElementById('s-sheet-id-input');
-      var elLastUpdatedAbout = document.getElementById('s-last-updated-about');
-      if (elEmailInput) { elEmailInput.value = data.userEmail; }
-      if (elSheetIdInput) { elSheetIdInput.value = data.sheetName; }
-      if (elLastUpdatedAbout) { elLastUpdatedAbout.textContent = data.lastUpdated; }
-
+      if (elEmail) { elEmail.textContent = currentUser ? (currentUser.email || "local-user@example.com") : "local-user@example.com"; }
+      if (elSheet) { elSheet.textContent = "ฐานข้อมูลจำลอง (Local Storage)"; }
+      if (elUpdated) { elUpdated.textContent = new Date().toLocaleTimeString(); }
+      
       window.updateUI();
       window.showLoading(false);
-      window.showToast("รีเฟรชข้อมูลฐานข้อมูลเรียบร้อย ✅");
-    })
-    .withFailureHandler(function(err) {
-      window.showLoading(false);
-      window.showToast("รีเฟรชข้อมูลล้มเหลว: " + (err && err.message ? err.message : err), "error");
-    })
-    .getData();
+      window.showToast("รีเฟรชข้อมูลจำลองสำเร็จ ✅", "info");
+    }, 800);
+  }
 };
 
 // -- UI UPDATES & FILTERS -------------------------------------
@@ -890,38 +934,45 @@ window.submitUserForm = function() {
   }
 
   window.showLoading(true, "กำลังบันทึกข้อมูลผู้ใช้งาน...");
-
-  window.backend
-    .withSuccessHandler(function(res) {
+  
+  if (isGAS) {
+    google.script.run
+      .withSuccessHandler(function(res) {
+        window.showLoading(false);
+        if (res.success) {
+          window.showToast("บันทึกข้อมูลผู้ใช้งานเรียบร้อยแล้ว ✅");
+          window.closeModal('modal-user');
+          window.refreshUsers();
+        } else {
+          window.showToast(res.error, "error");
+        }
+      })
+      .saveUserRecord(userData);
+  } else {
+    // Simulator mock
+    setTimeout(function() {
       window.showLoading(false);
-      if (res.success) {
-        window.showToast("บันทึกข้อมูลผู้ใช้งานเรียบร้อยแล้ว ✅");
-        window.closeModal('modal-user');
-        window.refreshUsers();
-      } else {
-        window.showToast(res.error, "error");
-      }
-    })
-    .withFailureHandler(function(err) {
-      window.showLoading(false);
-      window.showToast(err && err.message ? err.message : String(err), "error");
-    })
-    .saveUserRecord(userData);
+      window.showToast("บันทึกผู้ใช้งานจำลองสำเร็จ ✅", "info");
+      window.closeModal('modal-user');
+    }, 500);
+  }
 };
 
 window.refreshUsers = function() {
-  window.showLoading(true, "กำลังดึงรายชื่อผู้ใช้งาน...");
-  window.backend
-    .withSuccessHandler(function(users) {
-      allUsers = users;
-      window.renderUsersTable();
-      window.showLoading(false);
-    })
-    .withFailureHandler(function(err) {
-      window.showLoading(false);
-      window.showToast("ไม่สามารถโหลดรายชื่อได้: " + (err && err.message ? err.message : err), "error");
-    })
-    .getUsersList();
+  if (isGAS) {
+    window.showLoading(true, "กำลังดึงรายชื่อผู้ใช้งาน...");
+    google.script.run
+      .withSuccessHandler(function(users) {
+        allUsers = users;
+        window.renderUsersTable();
+        window.showLoading(false);
+      })
+      .withFailureHandler(function(err) {
+        window.showLoading(false);
+        window.showToast("ไม่สามารถโหลดรายชื่อได้: " + err, "error");
+      })
+      .getUsersList();
+  }
 };
 
 window.renderUsersTable = function(users) {
@@ -1377,21 +1428,47 @@ window.confirmDelete = function(id) {
   window.closeModal('modal-confirm');
   window.showLoading(true, "กำลังลบข้อมูลเด็กออกจากฐานข้อมูล...");
   
-  window.backend
-    .withSuccessHandler(function(res) {
-      window.showLoading(false);
-      if (res.success) {
-        window.showToast("ลบข้อมูลเด็กเรียบร้อยแล้ว 🗑️");
-        window.refreshData();
-      } else {
-        window.showToast("ลบข้อมูลไม่สำเร็จ", "error");
+  if (isGAS) {
+    google.script.run
+      .withSuccessHandler(function(res) {
+        window.showLoading(false);
+        if (res.success) {
+          window.showToast("ลบข้อมูลเด็กเรียบร้อยแล้ว 🗑️");
+          window.refreshData();
+        } else {
+          window.showToast("ลบข้อมูลไม่สำเร็จ", "error");
+        }
+      })
+      .withFailureHandler(function(err) {
+        window.showLoading(false);
+        window.showToast("เกิดข้อผิดพลาดในการลบ: " + err, "error");
+      })
+      .deleteChild(id, currentUser ? (currentUser.email || currentUser.name) : 'unknown');
+  } else {
+    setTimeout(function() {
+      var localChildren = JSON.parse(safeStorage.getItem("iron_zero_children"));
+      var cIndex = -1;
+      for (var i = 0; i < localChildren.length; i++) {
+        if (localChildren[i].id === id) { cIndex = i; break; }
       }
-    })
-    .withFailureHandler(function(err) {
+      var childObj = localChildren[cIndex];
+      localChildren.splice(cIndex, 1);
+      safeStorage.setItem("iron_zero_children", JSON.stringify(localChildren));
+      
+      var localLogs = JSON.parse(safeStorage.getItem("iron_zero_logs"));
+      localLogs.unshift({
+        timestamp: new Date().toLocaleString(),
+        user: currentUser ? (currentUser.email || currentUser.name) : "local-user@example.com",
+        action: "ลบข้อมูลเด็ก",
+        details: "ทำการลบ (Soft Delete) เด็ก ID: " + id + " ชื่อ: " + childObj.name
+      });
+      safeStorage.setItem("iron_zero_logs", JSON.stringify(localLogs));
+      
       window.showLoading(false);
-      window.showToast("เกิดข้อผิดพลาดในการลบ: " + (err && err.message ? err.message : err), "error");
-    })
-    .deleteChild(id);
+      window.showToast("ลบข้อมูลจำลองเรียบร้อยแล้ว 🗑️", "info");
+      window.refreshData();
+    }, 600);
+  }
 };
 
 window.saveChild = function() {
@@ -1453,24 +1530,81 @@ window.saveChild = function() {
   };
   
   window.showLoading(true, "กำลังบันทึกข้อมูลเข้าระบบ...");
-
-  window.backend
-    .withSuccessHandler(function(res) {
-      window.showLoading(false);
-      if (res.success) {
-        window.showToast("บันทึกข้อมูลเด็กเรียบร้อยแล้ว ✅");
-        window.resetForm();
-        window.navigate('children');
-        window.refreshData();
-      } else {
-        window.showToast("บันทึกไม่สำเร็จ", "error");
+  
+  if (isGAS) {
+    google.script.run
+      .withSuccessHandler(function(res) {
+        window.showLoading(false);
+        if (res.success) {
+          window.showToast("บันทึกข้อมูลเด็กเรียบร้อยแล้ว ✅");
+          window.resetForm();
+          window.navigate('children');
+          window.refreshData();
+        } else {
+          window.showToast("บันทึกไม่สำเร็จ", "error");
+        }
+      })
+      .withFailureHandler(function(err) {
+        window.showLoading(false);
+        window.showToast("เกิดข้อผิดพลาดในการบันทึก: " + err, "error");
+      })
+      .saveChild(data, currentUser ? (currentUser.email || currentUser.name) : 'unknown');
+  } else {
+    setTimeout(function() {
+      var localChildren = JSON.parse(safeStorage.getItem("iron_zero_children")) || [];
+      var newId = id || ("CHILD_" + new Date().getTime());
+      
+      var hctScore = 0;
+      if (hct > 0) {
+        if (hct < 30) { hctScore = 2; }
+        else if (hct <= 32.9) { hctScore = 1; }
       }
-    })
-    .withFailureHandler(function(err) {
+      var nutrScore = 0;
+      if (nutrition === 'ผอม') { nutrScore = 2; }
+      else if (nutrition === 'ค่อนข้างผอม') { nutrScore = 1; }
+      
+      var ironScore = (iron === 'ไม่เคยได้รับ' || iron === 'ได้รับยาแต่ไม่ได้กินยา' || iron === 'ไม่ได้') ? 2 : (iron === 'ไม่สม่ำเสมอ' ? 1 : 0);
+      var foodScore = food === 'ไม่ได้บริโภค' ? 2 : (food === 'บางครั้ง' ? 1 : 0);
+      var socialScore = social === 'ไม่เพียงพอ' ? 2 : (social === 'ขัดสน' ? 1 : 0);
+      
+      var score = hctScore + nutrScore + ironScore + foodScore + socialScore;
+      var status = "เสี่ยงต่ำ";
+      if (score >= 4) { status = "เสี่ยงสูง"; }
+      else if (score >= 2) { status = "เสี่ยงปานกลาง"; }
+      
+      var childRecord = JSON.parse(JSON.stringify(data));
+      childRecord.id = newId;
+      childRecord.status = status;
+      childRecord.lastDate = id ? (allChildren.filter(function(c) { return c.id === id; })[0].lastDate || "-") : "-";
+      
+      if (id) {
+        var idx = -1;
+        for (var i = 0; i < localChildren.length; i++) {
+          if (localChildren[i].id === id) { idx = i; break; }
+        }
+        localChildren[idx] = childRecord;
+      } else {
+        localChildren.push(childRecord);
+      }
+      
+      safeStorage.setItem("iron_zero_children", JSON.stringify(localChildren));
+      
+      var localLogs = JSON.parse(safeStorage.getItem("iron_zero_logs")) || [];
+      localLogs.unshift({
+        timestamp: new Date().toLocaleString(),
+        user: currentUser ? (currentUser.email || currentUser.name) : "local-user@example.com",
+        action: id ? "แก้ไขข้อมูลเด็ก" : "เพิ่มข้อมูลเด็ก",
+        details: (id ? "แก้ไข" : "เพิ่ม") + "เด็ก: " + name + " (สถานะ: " + status + ")"
+      });
+      safeStorage.setItem("iron_zero_logs", JSON.stringify(localLogs));
+      
       window.showLoading(false);
-      window.showToast("เกิดข้อผิดพลาดในการบันทึก: " + (err && err.message ? err.message : err), "error");
-    })
-    .saveChild(data);
+      window.showToast("บันทึกข้อมูลจำลองสำเร็จ ✅", "info");
+      window.resetForm();
+      window.navigate('children');
+      window.refreshData();
+    }, 600);
+  }
 };
 
 // -- EXPORT & IMPORT ------------------------------------------
@@ -1593,21 +1727,117 @@ window.handleCSVImport = function(input) {
 
       window.showLoading(true, "กำลังนำเข้าข้อมูลเด็ก " + childrenToImport.length + " รายการ เข้าระบบ...");
 
-      window.backend
-        .withSuccessHandler(function(res) {
+      if (isGAS) {
+        google.script.run
+          .withSuccessHandler(function(res) {
+            window.showLoading(false);
+            if (res.success) {
+              window.showToast("นำเข้าสำเร็จเรียบร้อย! 🎉 (เพิ่มใหม่ " + res.added + " คน, อัปเดต " + res.updated + " คน)");
+              window.refreshData();
+            } else {
+              window.showToast("เกิดข้อผิดพลาดในการนำเข้า: " + res.error, "error");
+            }
+          })
+          .withFailureHandler(function(err) {
+            window.showLoading(false);
+            window.showToast("ล้มเหลวในการเชื่อมต่อ Apps Script: " + err, "error");
+          })
+          .saveChildrenBatch(childrenToImport);
+      } else {
+        setTimeout(function() {
           window.showLoading(false);
-          if (res.success) {
-            window.showToast("นำเข้าสำเร็จเรียบร้อย! 🎉 (เพิ่มใหม่ " + res.added + " คน, อัปเดต " + res.updated + " คน)");
-            window.refreshData();
-          } else {
-            window.showToast("เกิดข้อผิดพลาดในการนำเข้า: " + res.error, "error");
-          }
-        })
-        .withFailureHandler(function(err) {
-          window.showLoading(false);
-          window.showToast("ล้มเหลวในการเชื่อมต่อ: " + (err && err.message ? err.message : err), "error");
-        })
-        .saveChildrenBatch(childrenToImport);
+          var localChildren = JSON.parse(safeStorage.getItem("iron_zero_children")) || [];
+          var added = 0;
+          var updated = 0;
+
+          childrenToImport.forEach(function(child) {
+            var existingIdx = -1;
+            if (child.id) {
+              for (var i = 0; i < localChildren.length; i++) {
+                if (localChildren[i].id === child.id) { existingIdx = i; break; }
+              }
+            } else if (child.name) {
+              var cName = child.name.trim();
+              for (var j = 0; j < localChildren.length; j++) {
+                if (localChildren[j].name.trim() === cName) { existingIdx = j; break; }
+              }
+            }
+
+            var mergedChild = {};
+            if (existingIdx !== -1) { mergedChild = JSON.parse(JSON.stringify(localChildren[existingIdx])); }
+
+            var fields = ["name", "age", "house", "moo", "village", "tambon", "amphoe", "province", "lat", "lng", "hct", "weight", "height", "nutrition", "iron", "food", "social", "guardian", "notes"];
+            fields.forEach(function(field) {
+              if (child[field] !== undefined && child[field] !== null && child[field] !== "") {
+                mergedChild[field] = child[field];
+              }
+            });
+
+            var hctVal = Number(mergedChild.hct) || 0;
+            var hctScore = 0;
+            if (hctVal > 0) {
+              if (hctVal < 30) { hctScore = 2; }
+              else if (hctVal <= 32.9) { hctScore = 1; }
+            }
+            var nutrScore = 0;
+            if (mergedChild.nutrition === "ผอม") { nutrScore = 2; }
+            else if (mergedChild.nutrition === "ค่อนข้างผอม") { nutrScore = 1; }
+
+            var ironVal = mergedChild.iron || 'สม่ำเสมอ';
+            var ironScore = (ironVal === "ไม่เคยได้รับ" || ironVal === "ไม่ได้" || ironVal === "ได้รับยาแต่ไม่ได้กินยา" || ironVal === "ได้แต่ไม่ได้กิน") ? 2 : (ironVal === "ไม่สม่ำเสมอ" ? 1 : 0);
+            var foodVal = mergedChild.food || 'เป็นประจำ';
+            var foodScore = foodVal === "ไม่ได้บริโภค" ? 2 : (foodVal === "บางครั้ง" ? 1 : 0);
+            var socialVal = mergedChild.social || 'เพียงพอ';
+            var socialScore = socialVal === "ไม่เพียงพอ" ? 2 : (socialVal === "ขัดสน" ? 1 : 0);
+
+            var totalScore = hctScore + nutrScore + ironScore + foodScore + socialScore;
+            var status = "เสี่ยงต่ำ";
+            if (totalScore >= 4) { status = "เสี่ยงสูง"; }
+            else if (totalScore >= 2) { status = "เสี่ยงปานกลาง"; }
+
+            var standardChild = {
+              id: mergedChild.id || "CHILD_" + new Date().getTime() + "_" + Math.floor(Math.random() * 1000),
+              name: mergedChild.name,
+              age: mergedChild.age || "4 ปี",
+              house: mergedChild.house || "",
+              moo: mergedChild.moo || "",
+              village: mergedChild.village || "บ้านคลองหาด",
+              tambon: mergedChild.tambon || "คลองหาด",
+              amphoe: mergedChild.amphoe || "คลองหาด",
+              province: mergedChild.province || "สระแก้ว",
+              lat: mergedChild.lat || 13.453589,
+              lng: mergedChild.lng || 102.299076,
+              hct: hctVal || null,
+              weight: mergedChild.weight || null,
+              height: mergedChild.height || null,
+              nutrition: mergedChild.nutrition || "สมส่วน",
+              iron: ironVal === 'ได้' ? 'สม่ำเสมอ' : (ironVal === 'ไม่ได้' ? 'ได้รับยาแต่ไม่ได้กินยา' : ironVal),
+              food: foodVal,
+              social: socialVal,
+              guardian: mergedChild.guardian || "",
+              totalScore: totalScore,
+              status: status,
+              lastDate: mergedChild.lastDate || "-",
+              notes: mergedChild.notes || ""
+            };
+
+            if (existingIdx !== -1) { localChildren[existingIdx] = standardChild; updated++; }
+            else { localChildren.push(standardChild); added++; }
+          });
+
+          safeStorage.setItem("iron_zero_children", JSON.stringify(localChildren));
+          var localLogs = JSON.parse(safeStorage.getItem("iron_zero_logs")) || [];
+          localLogs.unshift({
+            timestamp: new Date().toLocaleString('th-TH'),
+            user: "local-user@example.com",
+            action: "นำเข้าข้อมูลเด็ก (Batch)",
+            details: "นำเข้าข้อมูลเด็กปฐมวัยจำนวน " + childrenToImport.length + " คน (เพิ่มใหม่ " + added + ", อัปเดต " + updated + ")"
+          });
+          safeStorage.setItem("iron_zero_logs", JSON.stringify(localLogs));
+          window.showToast("นำเข้าสำเร็จ (Simulator) 🎉 เพิ่มใหม่: " + added + ", อัปเดต: " + updated);
+          window.refreshData();
+        }, 800);
+      }
     } catch (err) {
       window.showLoading(false);
       window.showToast("เกิดข้อผิดพลาดในการนำเข้าไฟล์: " + err.message, "error");
@@ -1751,14 +1981,36 @@ window.submitMedicineLog = function() {
   var logData = { childId: childId, date: date, time: time, taken: taken, vhvId: vhvId || "AOR001", notes: notes };
   window.showLoading(true, "กำลังบันทึกข้อมูลการกินยา...");
 
-  window.backend
-    .withSuccessHandler(function(res) {
+  if (isGAS) {
+    google.script.run
+      .withSuccessHandler(function(res) {
+        window.showLoading(false);
+        if (res.success) { window.showToast("บันทึกการกินยาสำเร็จแล้ว ✅"); window.closeModal('modal-med'); window.refreshData(); }
+        else { window.showToast("บันทึกไม่สำเร็จ: " + res.error, "error"); }
+      })
+      .withFailureHandler(function(err) { window.showLoading(false); window.showToast("เกิดข้อผิดพลาด: " + err, "error"); })
+      .saveMedicineLog(logData, currentUser ? (currentUser.email || currentUser.name) : 'unknown');
+  } else {
+    setTimeout(function() {
       window.showLoading(false);
-      if (res.success) { window.showToast("บันทึกการกินยาสำเร็จแล้ว ✅"); window.closeModal('modal-med'); window.refreshData(); }
-      else { window.showToast("บันทึกไม่สำเร็จ: " + res.error, "error"); }
-    })
-    .withFailureHandler(function(err) { window.showLoading(false); window.showToast("เกิดข้อผิดพลาด: " + (err && err.message ? err.message : err), "error"); })
-    .saveMedicineLog(logData);
+      var localMedLogs = JSON.parse(safeStorage.getItem("iron_zero_med_logs")) || [];
+      localMedLogs.unshift({ logId: "MED_" + new Date().getTime(), childId: childId, date: date, time: time, taken: taken, vhvId: vhvId, notes: notes });
+      safeStorage.setItem("iron_zero_med_logs", JSON.stringify(localMedLogs));
+      if (taken === "กินยาแล้ว") {
+        var localChildren = JSON.parse(safeStorage.getItem("iron_zero_children")) || [];
+        for (var i = 0; i < localChildren.length; i++) {
+          if (localChildren[i].id === childId) { localChildren[i].lastDate = date; break; }
+        }
+        safeStorage.setItem("iron_zero_children", JSON.stringify(localChildren));
+      }
+      var localLogs = JSON.parse(safeStorage.getItem("iron_zero_logs")) || [];
+      localLogs.unshift({ timestamp: new Date().toLocaleString('th-TH'), user: currentUser ? (currentUser.email || currentUser.name) : "local-user@example.com", action: "บันทึกเวลากินยา", details: "บันทึกการกินยาสำหรับเด็ก: " + childName + " สถานะ: " + taken });
+      safeStorage.setItem("iron_zero_logs", JSON.stringify(localLogs));
+      window.showToast("บันทึกการกินยาสำเร็จแล้ว (Simulator) ✅");
+      window.closeModal('modal-med');
+      window.refreshData();
+    }, 500);
+  }
 };
 
 // -- ASSESSMENT -----------------------------------------------
@@ -1892,14 +2144,40 @@ window.submitAssessment = function() {
   updateData.iron = ironChoice; updateData.food = foodChoice; updateData.social = socialChoice; updateData.notes = notesText;
 
   window.showLoading(true, "กำลังบันทึกผลการประเมินความเสี่ยง...");
-  window.backend
-    .withSuccessHandler(function(res) {
+  if (isGAS) {
+    google.script.run
+      .withSuccessHandler(function(res) {
+        window.showLoading(false);
+        if (res.success) { window.showToast("บันทึกผลการประเมินความเสี่ยงสำเร็จเรียบร้อย ✅"); window.resetAssessmentForm(); window.refreshData(); }
+        else { window.showToast("บันทึกข้อมูลไม่สำเร็จ: " + res.error, "error"); }
+      })
+      .withFailureHandler(function(err) { window.showLoading(false); window.showToast("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์: " + err, "error"); })
+      .saveChild(updateData);
+  } else {
+    setTimeout(function() {
       window.showLoading(false);
-      if (res.success) { window.showToast("บันทึกผลการประเมินความเสี่ยงสำเร็จเรียบร้อย ✅"); window.resetAssessmentForm(); window.refreshData(); }
-      else { window.showToast("บันทึกข้อมูลไม่สำเร็จ: " + res.error, "error"); }
-    })
-    .withFailureHandler(function(err) { window.showLoading(false); window.showToast("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์: " + (err && err.message ? err.message : err), "error"); })
-    .saveChild(updateData);
+      var localChildren = JSON.parse(safeStorage.getItem("iron_zero_children")) || [];
+      var idx = -1;
+      for (var i = 0; i < localChildren.length; i++) {
+        if (localChildren[i].id === updateData.id) { idx = i; break; }
+      }
+      var hctVal = Number(updateData.hct); var hctScore = 0;
+      if (hctVal > 0) { if (hctVal < 30) { hctScore = 2; } else if (hctVal < 33) { hctScore = 1; } }
+      var nutrScore = 0; if (updateData.nutrition === 'ผอม') { nutrScore = 2; } else if (updateData.nutrition === 'ค่อนข้างผอม') { nutrScore = 1; }
+      var ironScore = (ironChoice === 'ได้รับยาแต่ไม่ได้กินยา' || ironChoice === 'ไม่เคยได้รับ') ? 2 : (ironChoice === 'ไม่สม่ำเสมอ' ? 1 : 0);
+      var foodScore = foodChoice === 'ไม่ได้บริโภค' ? 2 : (foodChoice === 'บางครั้ง' ? 1 : 0);
+      var socialScore = socialChoice === 'ไม่เพียงพอ' ? 2 : (socialChoice === 'ขัดสน' ? 1 : 0);
+      var totalScore = hctScore + nutrScore + ironScore + foodScore + socialScore;
+      var status = "เสี่ยงต่ำ"; if (totalScore >= 4) { status = "เสี่ยงสูง"; } else if (totalScore >= 2) { status = "เสี่ยงปานกลาง"; }
+      updateData.status = status; updateData.totalScore = totalScore;
+      if (idx !== -1) { localChildren[idx] = updateData; safeStorage.setItem("iron_zero_children", JSON.stringify(localChildren)); }
+      var localLogs = JSON.parse(safeStorage.getItem("iron_zero_logs")) || [];
+      localLogs.unshift({ timestamp: new Date().toLocaleString('th-TH'), user: "local-user@example.com", action: "ประเมินความเสี่ยง", details: "ทำแบบประเมินรายบุคคลสำหรับเด็ก: " + updateData.name + " คะแนนรวม: " + totalScore + " (" + status + ")" });
+      safeStorage.setItem("iron_zero_logs", JSON.stringify(localLogs));
+      window.showToast("บันทึกผลการประเมินสำเร็จ (Simulator) ✅");
+      window.resetAssessmentForm(); window.refreshData();
+    }, 500);
+  }
 };
 
 window.resetAssessmentForm = function() {
@@ -1929,63 +2207,75 @@ window.togglePasswordVisibility = function(inputId) {
 };
 
 window.loadSystemSettings = function() {
-  if (!currentUser || currentUser.role !== 'เจ้าหน้าที่') return;
-  window.backend
-    .withSuccessHandler(function(settings) {
-      if (settings.lineClientId) { document.getElementById('f-setting-line-client-id').value = settings.lineClientId; }
-      if (settings.lineRedirectUri) { document.getElementById('f-setting-line-redirect-uri').value = settings.lineRedirectUri; }
-      if (settings.liffId) { document.getElementById('f-setting-liff-id').value = settings.liffId; }
-      if (settings.healthIdClientId) { document.getElementById('f-setting-healthid-client-id').value = settings.healthIdClientId; }
-      if (settings.providerIdClientId) { document.getElementById('f-setting-providerid-client-id').value = settings.providerIdClientId; }
-      if (settings.providerIdRedirectUri) { document.getElementById('f-setting-providerid-redirect-uri').value = settings.providerIdRedirectUri; }
-      document.getElementById('f-setting-providerid-env').value = settings.providerIdEnv === 'uat' ? 'uat' : 'prd';
-      document.getElementById('f-setting-healthid-client-secret').placeholder = settings.hasHealthIdClientSecret ? "•••••••• (ตั้งค่าไว้แล้ว — เปลี่ยนผ่าน CLI เท่านั้น)" : "ยังไม่ได้ตั้งค่า (firebase functions:secrets:set HEALTHID_CLIENT_SECRET)";
-      document.getElementById('f-setting-providerid-secret-key').placeholder = settings.hasProviderIdSecretKey ? "•••••••• (ตั้งค่าไว้แล้ว — เปลี่ยนผ่าน CLI เท่านั้น)" : "ยังไม่ได้ตั้งค่า (firebase functions:secrets:set PROVIDERID_SECRET_KEY)";
-      document.getElementById('f-setting-line-token').placeholder = settings.hasLineToken ? "•••••••• (ตั้งค่าไว้แล้ว — เปลี่ยนผ่าน CLI เท่านั้น)" : "ยังไม่ได้ตั้งค่า";
-      document.getElementById('f-setting-line-client-secret').placeholder = settings.hasLineClientSecret ? "•••••••• (ตั้งค่าไว้แล้ว — เปลี่ยนผ่าน CLI เท่านั้น)" : "ยังไม่ได้ตั้งค่า";
-    })
-    .withFailureHandler(function(err) {
-      console.error("Failed to load system settings:", err);
-    })
-    .getSystemSettings();
+  if (isGAS) {
+    google.script.run
+      .withSuccessHandler(function(settings) {
+        if (settings.lineToken) { document.getElementById('f-setting-line-token').value = settings.lineToken; }
+        if (settings.spreadsheetId) { document.getElementById('s-sheet-id-input').value = settings.spreadsheetId; }
+        if (settings.lineClientId) { document.getElementById('f-setting-line-client-id').value = settings.lineClientId; }
+        if (settings.lineClientSecret) { document.getElementById('f-setting-line-client-secret').value = settings.lineClientSecret; }
+        if (settings.lineRedirectUri) { document.getElementById('f-setting-line-redirect-uri').value = settings.lineRedirectUri; }
+        if (settings.liffId) { document.getElementById('f-setting-liff-id').value = settings.liffId; }
+      })
+      .getSystemSettings();
+  } else {
+    document.getElementById('f-setting-line-token').value = safeStorage.getItem("iron_zero_line_token") || "";
+    document.getElementById('s-sheet-id-input').value = safeStorage.getItem("iron_zero_sheet_id") || "1lpQ502MZlt8sUyOlgirGozD05Gs1N8B6QEJdVxHNoDs";
+    document.getElementById('f-setting-line-client-id').value = safeStorage.getItem("iron_zero_line_client_id") || "";
+    document.getElementById('f-setting-line-client-secret').value = safeStorage.getItem("iron_zero_line_client_secret") || "";
+    document.getElementById('f-setting-line-redirect-uri').value = safeStorage.getItem("iron_zero_line_redirect_uri") || "";
+    document.getElementById('f-setting-liff-id').value = safeStorage.getItem("iron_zero_liff_id") || "";
+  }
 };
 
 window.saveSettings = function() {
+  var lineToken = document.getElementById('f-setting-line-token').value.trim();
+  var spreadsheetId = document.getElementById('s-sheet-id-input').value.trim();
   var lineClientId = document.getElementById('f-setting-line-client-id').value.trim();
+  var lineClientSecret = document.getElementById('f-setting-line-client-secret').value.trim();
   var lineRedirectUri = document.getElementById('f-setting-line-redirect-uri').value.trim();
   var liffId = document.getElementById('f-setting-liff-id').value.trim();
-  var healthIdClientId = document.getElementById('f-setting-healthid-client-id').value.trim();
-  var providerIdClientId = document.getElementById('f-setting-providerid-client-id').value.trim();
-  var providerIdRedirectUri = document.getElementById('f-setting-providerid-redirect-uri').value.trim();
-  var providerIdEnv = document.getElementById('f-setting-providerid-env').value;
 
   window.showLoading(true, "กำลังบันทึกการตั้งค่าระบบ...");
 
-  window.backend
-    .withSuccessHandler(function(res) {
+  if (isGAS) {
+    google.script.run
+      .withSuccessHandler(function() { window.showLoading(false); window.showToast("บันทึกการตั้งค่าเรียบร้อยแล้ว ✅"); window.refreshData(); })
+      .saveSystemSettings({ 
+        lineToken: lineToken, 
+        spreadsheetId: spreadsheetId,
+        lineClientId: lineClientId,
+        lineClientSecret: lineClientSecret,
+        lineRedirectUri: lineRedirectUri,
+        liffId: liffId
+      });
+  } else {
+    setTimeout(function() {
+      safeStorage.setItem("iron_zero_line_token", lineToken);
+      safeStorage.setItem("iron_zero_sheet_id", spreadsheetId);
+      safeStorage.setItem("iron_zero_line_client_id", lineClientId);
+      safeStorage.setItem("iron_zero_line_client_secret", lineClientSecret);
+      safeStorage.setItem("iron_zero_line_redirect_uri", lineRedirectUri);
+      safeStorage.setItem("iron_zero_liff_id", liffId);
+
       window.showLoading(false);
-      window.showToast("บันทึกการตั้งค่าเรียบร้อยแล้ว ✅");
-      if (res.warnings && res.warnings.length) { window.showToast(res.warnings.join(" "), "info"); }
+      window.showToast("บันทึกการตั้งค่าจำลองสำเร็จ ✅", "info");
       window.refreshData();
-    })
-    .withFailureHandler(function(err) { window.showLoading(false); window.showToast(err && err.message ? err.message : String(err), "error"); })
-    .saveSystemSettings({
-      lineClientId: lineClientId,
-      lineRedirectUri: lineRedirectUri,
-      liffId: liffId,
-      healthIdClientId: healthIdClientId,
-      providerIdClientId: providerIdClientId,
-      providerIdRedirectUri: providerIdRedirectUri,
-      providerIdEnv: providerIdEnv
-    });
+    }, 500);
+  }
 };
 
 window.testLineNotify = function() {
+  var lineToken = document.getElementById('f-setting-line-token').value.trim();
+  if (!lineToken) { window.showToast("กรุณาใส่ Line Token ก่อนทดสอบ", "error"); return; }
   window.showLoading(true, "กำลังส่งข้อความทดสอบ...");
-  window.backend
-    .withSuccessHandler(function(res) { window.showLoading(false); if (res.success) { window.showToast("ส่งข้อความทดสอบสำเร็จ! กรุณาตรวจสอบใน LINE"); } else { window.showToast("ส่งไม่สำเร็จ: " + res.error, "error"); } })
-    .withFailureHandler(function(err) { window.showLoading(false); window.showToast(err && err.message ? err.message : String(err), "error"); })
-    .testLineNotify();
+  if (isGAS) {
+    google.script.run
+      .withSuccessHandler(function(res) { window.showLoading(false); if (res.success) { window.showToast("ส่งข้อความทดสอบสำเร็จ! กรุณาตรวจสอบใน LINE"); } else { window.showToast("ส่งไม่สำเร็จ: " + res.error, "error"); } })
+      .testLineNotify(lineToken);
+  } else {
+    setTimeout(function() { window.showLoading(false); window.showToast("ทดสอบส่งสำเร็จ (Simulation Mode)", "info"); }, 800);
+  }
 };
 
 // -- AUTHENTICATION -------------------------------------------
@@ -1997,106 +2287,82 @@ window.switchLoginTab = function(role) {
   document.getElementById('login-sec-vhv').classList.toggle('active', role === 'vhv');
 };
 
-window.togglePasswordVisibility = function(inputId, iconId) {
-  var input = document.getElementById(inputId);
-  var icon = document.getElementById(iconId);
-  if (!input || !icon) return;
-  if (input.type === 'password') {
-    input.type = 'text';
-    icon.classList.remove('fa-eye');
-    icon.classList.add('fa-eye-slash');
-  } else {
-    input.type = 'password';
-    icon.classList.remove('fa-eye-slash');
-    icon.classList.add('fa-eye');
-  }
-};
-
-window.toggleDevPanel = function() {
-  var panel = document.getElementById('dev-quick-login-panel-body');
-  var arrow = document.getElementById('dev-panel-arrow');
-  if (!panel) return;
-  var isHidden = panel.style.display === 'none' || !panel.style.display;
-  panel.style.display = isHidden ? 'block' : 'none';
-  if (arrow) {
-    arrow.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
-  }
-};
-
 window.moveOtpFocus = function(current, nextId) {
   if (current.value.length >= 1 && nextId) { document.getElementById(nextId).focus(); }
 };
 
-window.submitHOSxPLogin = function() {
-  var username = document.getElementById('login-hosxp-user').value.trim();
-  var password = document.getElementById('login-hosxp-password').value.trim();
-  if (!username || !password) { window.showToast("กรุณากรอกชื่อผู้ใช้งานและรหัสผ่าน", "error"); return; }
-  
-  // แปลง username ให้เป็น email format ถ้าผู้ใช้ไม่ได้พิมพ์ @ มา
-  var email = username;
-  if (email.indexOf('@') === -1) {
-    email = email + "@ironrisk.local"; // Dummy domain สำหรับ HOSxP Username
-  }
-
+window.submitStaffEmailLogin = function() {
+  var email = document.getElementById('login-staff-email').value.trim();
+  var password = document.getElementById('login-staff-password').value.trim();
+  if (!email) { window.showToast("กรุณากรอกอีเมลองค์กร", "error"); return; }
   window.showLoading(true, "กำลังตรวจสอบข้อมูล...");
-  window.fb.signInStaffEmail(email, password).then(function(res) {
-    window.showLoading(false);
-    if (res.pending) { window.showPendingApprovalScreen(res.user, "บัญชีของคุณกำลังรอการอนุมัติจากผู้ดูแลระบบ"); }
-    else if (res.success) { window.setSession(res.user); }
-    else { window.showToast(res.error || "เข้าสู่ระบบล้มเหลว", "error"); }
-  }).catch(function(err) {
-    window.showLoading(false);
-    var errMsg = "เข้าสู่ระบบล้มเหลว";
-    if (err && err.code === 'auth/invalid-credential') {
-      errMsg = "ชื่อผู้ใช้งาน หรือ รหัสผ่านไม่ถูกต้อง";
-    }
-    window.showToast(errMsg, "error");
-  });
+  if (isGAS) {
+    google.script.run
+      .withSuccessHandler(function(res) { window.showLoading(false); if (res.success) { window.setSession(res.user); } else { window.showToast(res.error, "error"); } })
+      .withFailureHandler(function(err) { window.showLoading(false); window.showToast(err.toString(), "error"); })
+      .verifyUserLogin("SSO", email, password);
+  } else {
+    setTimeout(function() {
+      window.showLoading(false);
+      var user = MOCK_USERS.filter(function(u) { return u.email && u.email.toLowerCase() === email.toLowerCase(); })[0];
+      if (user) { window.setSession(user); } else { window.showToast("ไม่พบบัญชีผู้ใช้งานจำลองอีเมลนี้", "error"); }
+    }, 800);
+  }
 };
 
 window.handleLineLogin = function() {
-  window.showLoading(true, "กำลังเตรียม LINE Login...");
-  window.fb.getLineLoginUrl().then(function(url) {
-    window.top.location.href = url;
-  }).catch(function(err) {
-    window.showLoading(false);
-    window.showToast("ไม่สามารถเตรียม LINE Login ได้: " + (err && err.message ? err.message : err), "error");
-  });
-};
+  if (isGAS) {
+    window.showLoading(true, "กำลังเตรียม LINE Login...");
+    google.script.run
+      .withSuccessHandler(function(settings) {
+        window.showLoading(false);
+        var clientId = settings.lineClientId;
+        // ใช้ scriptUrl (URL จริงของ GAS) เป็น redirect_uri เสมอ
+        // window.location.href ใน GAS Sandbox ไม่ใช่ URL จริงที่ LINE จะ redirect กลับมา
+        var redirectUri = settings.scriptUrl || settings.lineRedirectUri || "";
 
-window.handleHealthIdLogin = function() {
-  window.showLoading(true, "กำลังเชื่อมต่อกับ Health ID (MOPH)...");
-  window.fb.getHealthIdLoginUrl().then(function(url) {
-    window.top.location.href = url;
-  }).catch(function(err) {
-    window.showLoading(false);
-    window.showToast("ไม่สามารถเตรียม Health ID Login ได้: " + (err && err.message ? err.message : err), "error");
-  });
-};
+        if (!clientId) {
+          window.showToast("กรุณาตั้งค่า LINE Client ID ในระบบก่อนใช้งาน", "error");
+          return;
+        }
+        if (!redirectUri) {
+          window.showToast("ไม่สามารถดึง URL ของระบบได้ กรุณาลองใหม่อีกครั้ง", "error");
+          return;
+        }
 
-window.handleProviderIdLogin = function() {
-  window.showLoading(true, "กำลังเชื่อมต่อกับ Provider ID (MOPH)...");
-  window.fb.getProviderIdLoginUrl().then(function(url) {
-    window.top.location.href = url;
-  }).catch(function(err) {
-    window.showLoading(false);
-    window.showToast("ไม่สามารถเตรียม Provider ID Login ได้: " + (err && err.message ? err.message : err), "error");
-  });
+        // แสดง URL ให้ผู้ใช้รู้ว่าต้องลงทะเบียนอะไรใน LINE Developers Console
+        console.log("[LINE Login] Redirect URI ที่ใช้:", redirectUri);
+        console.log("[LINE Login] ต้องลงทะเบียน URL นี้ใน LINE Developers Console > Callback URL:", redirectUri);
+
+        var state = "state_" + new Date().getTime();
+        var url = "https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=" + clientId + "&redirect_uri=" + encodeURIComponent(redirectUri) + "&state=" + state + "&scope=profile%20openid";
+        window.top.location.href = url;
+      })
+      .withFailureHandler(function(err) {
+        window.showLoading(false);
+        window.showToast("ไม่สามารถดึงค่า LINE Settings ได้: " + err, "error");
+      })
+      .getSystemSettings();
+  } else {
+    window.showLoading(true, "กำลังจำลอง LINE Login...");
+    setTimeout(function() { window.showLoading(false); window.setSession(MOCK_USERS[2]); }, 1000);
+  }
 };
 
 window.requestSMSOTP = function() {
   var phone = document.getElementById('login-vhv-phone').value.trim();
   if (!phone) { window.showToast("กรุณากรอกเบอร์โทรศัพท์", "error"); return; }
-  window.showLoading(true, "กำลังตรวจสอบเบอร์โทรศัพท์...");
-  window.backend
-    .withSuccessHandler(function(res) {
-      window.showLoading(false);
-      if (res.pending) { window.showPendingApprovalScreen(res.user, "บัญชีของคุณกำลังรอการอนุมัติจากผู้ดูแลระบบ"); }
-      else if (res.success) { window.startOTPDemo(phone); }
-      else { window.showToast(res.error, "error"); }
-    })
-    .withFailureHandler(function(err) { window.showLoading(false); window.showToast(err && err.message ? err.message : String(err), "error"); })
-    .checkOtpEligibility(phone);
+  var matchUser = MOCK_USERS.filter(function(u) { return u.phone && u.phone.replace(/[- ]/g, "") === phone.replace(/[- ]/g, ""); })[0];
+  if (!matchUser && !isGAS) { window.showToast("เบอร์โทรศัพท์นี้ยังไม่ได้ลงทะเบียนในระบบจำลอง", "error"); return; }
+  window.showLoading(true, "กำลังส่งรหัส OTP...");
+  if (isGAS) {
+    google.script.run
+      .withSuccessHandler(function(res) { window.showLoading(false); if (res.success) { window.startOTPDemo(phone); } else { window.showToast(res.error, "error"); } })
+      .withFailureHandler(function(err) { window.showLoading(false); window.showToast(err.toString(), "error"); })
+      .verifyUserLogin("OTP", phone, "");
+  } else {
+    setTimeout(function() { window.showLoading(false); window.startOTPDemo(phone); }, 800);
+  }
 };
 
 window.startOTPDemo = function(phone) {
@@ -2128,32 +2394,31 @@ window.verifySMSOTP = function() {
   clearInterval(otpTimerInterval);
   var phone = document.getElementById('login-vhv-phone').value.trim();
   window.showLoading(true, "กำลังยืนยันรหัส OTP...");
-  window.backend
-    .withSuccessHandler(function(res) {
-      if (res.pending) { window.showLoading(false); window.showPendingApprovalScreen(res.user, "บัญชีของคุณกำลังรอการอนุมัติจากผู้ดูแลระบบ"); return; }
-      if (!res.success || !res.customToken) { window.showLoading(false); window.showToast(res.error || "ยืนยันไม่สำเร็จ", "error"); return; }
-      window.fb.signInWithCustomToken(res.customToken).then(function() {
-        window.showLoading(false);
-        window.setSession(res.user);
-      }).catch(function(err) {
-        window.showLoading(false);
-        window.showToast(err && err.message ? err.message : String(err), "error");
-      });
-    })
-    .withFailureHandler(function(err) { window.showLoading(false); window.showToast(err && err.message ? err.message : String(err), "error"); })
-    .signInPhoneOtp(phone);
+  if (isGAS) {
+    google.script.run
+      .withSuccessHandler(function(res) { window.showLoading(false); if (res.success) { window.setSession(res.user); } else { window.showToast(res.error, "error"); } })
+      .withFailureHandler(function(err) { window.showLoading(false); window.showToast(err.toString(), "error"); })
+      .verifyUserLogin("OTP", phone, "");
+  } else {
+    setTimeout(function() {
+      window.showLoading(false);
+      var user = MOCK_USERS.filter(function(u) { return u.phone && u.phone.replace(/[- ]/g, "") === phone.replace(/[- ]/g, ""); })[0];
+      window.setSession(user);
+    }, 800);
+  }
 };
 
 window.logout = function() {
   window.showLoading(true, "กำลังออกจากระบบ...");
-  window.fb.signOut().finally(function() {
-    currentUser = null;
+  safeStorage.removeItem("iron_zero_session");
+  currentUser = null;
+  setTimeout(function() {
     window.showLoading(false);
-    document.getElementById('login-hosxp-user').value = ''; document.getElementById('login-hosxp-password').value = '';
+    document.getElementById('login-staff-email').value = ''; document.getElementById('login-staff-password').value = '';
     document.getElementById('login-vhv-phone').value = ''; window.resetOTPStep();
     document.getElementById('login-container').style.display = 'flex'; document.getElementById('app').style.display = 'none';
     window.showToast("ออกจากระบบสำเร็จแล้ว 🔒", "info");
-  });
+  }, 600);
 };
 
 window.applyUserRolePermissions = function() {
@@ -2161,15 +2426,11 @@ window.applyUserRolePermissions = function() {
   var displayName = document.getElementById('user-display-name');
   var displayRole = document.getElementById('user-display-role');
   var avatar = document.getElementById('user-avatar');
-
-  var cleanName = (currentUser.name || '').replace(/^(อื่นๆ|ไม่ระบุ)\s*/gi, '').trim() || currentUser.name || '';
-  currentUser.name = cleanName;
-
-  if (displayName) { displayName.textContent = cleanName; }
+  if (displayName) { displayName.textContent = currentUser.name; }
   if (displayRole) { displayRole.textContent = currentUser.role === 'อสม.' ? (currentUser.role + " (ม." + (currentUser.assignedVillage.replace(/[^0-9]/g, '') || currentUser.assignedVillage) + ")") : currentUser.role; }
   if (avatar) {
-    var avatarSrc = currentUser.avatarUrl || 'assets/images/moph-avatar.png';
-    avatar.innerHTML = '<img src="' + avatarSrc + '" style="width:100%;height:100%;border-radius:50%;object-fit:cover;" onerror="this.onerror=null;this.parentElement.textContent=\'' + (cleanName.charAt(0) || '👤') + '\';">';
+    avatar.textContent = currentUser.name.charAt(0);
+    if (currentUser.avatarUrl) { avatar.innerHTML = '<img src="' + currentUser.avatarUrl + '" style="width:100%;height:100%;border-radius:50%;">'; }
   }
   var isVhv = currentUser.role === 'อสม.';
   ['add', 'settings', 'villages', 'users'].forEach(function(navId) {
@@ -2183,63 +2444,80 @@ window.applyUserRolePermissions = function() {
 };
 
 window.initAuthSession = function() {
-  window.showLoading(true, "กำลังตรวจสอบสถานะการเข้าสู่ระบบ...");
-
-  // 1. Resolve an OAuth redirect (?code=...) if we just came back from Health ID
-  //    (Provider ID login) or LINE's authorize page.
-  var redirectLabel = "Health ID";
-  window.fb.handleHealthIdRedirect().then(function(healthResult) {
-    if (healthResult && healthResult.handled) return healthResult;
-    redirectLabel = "Provider ID";
-    return window.fb.handleProviderIdRedirect();
-  }).then(function(providerResult) {
-    if (providerResult && providerResult.handled) return providerResult;
-    redirectLabel = "LINE";
-    return window.fb.handleLineRedirect();
-  }).then(function(lineResult) {
-    if (lineResult && lineResult.handled) {
+  // 1. Check for LINE Login Error or Pending status (Instant Feedback)
+  if (typeof LINE_SESSION_ERROR !== 'undefined' && LINE_SESSION_ERROR !== null) {
+    if (typeof LINE_SESSION_USER !== 'undefined' && LINE_SESSION_USER !== null && LINE_SESSION_USER.status === 'Pending') {
+      window.showPendingApprovalScreen(LINE_SESSION_USER, LINE_SESSION_ERROR);
       window.showLoading(false);
-      if (lineResult.pending) {
-        window.showPendingApprovalScreen(lineResult.user, "บัญชีของคุณกำลังรอการอนุมัติจากผู้ดูแลระบบ");
-      } else if (lineResult.success) {
-        window.setSession(lineResult.user);
-      } else {
-        window.showToast(lineResult.error || ("เข้าสู่ระบบด้วย " + redirectLabel + " ไม่สำเร็จ"), "error");
-        document.getElementById('login-container').style.display = 'flex';
-        document.getElementById('app').style.display = 'none';
-      }
       return;
     }
+  }
 
-    // 2. Otherwise, check whether Firebase Auth already has a persisted session.
-    window.fb.onAuthReady().then(function(firebaseUser) {
-      if (!firebaseUser) {
-        window.showLoading(false);
-        document.getElementById('login-container').style.display = 'flex';
-        document.getElementById('app').style.display = 'none';
-        return;
-      }
-      window.backend
-        .withSuccessHandler(function(res) {
-          window.showLoading(false);
-          if (res.pending) {
-            window.showPendingApprovalScreen(res.user, "บัญชีของคุณกำลังรอการอนุมัติจากผู้ดูแลระบบ");
-          } else if (res.success) {
-            window.setSession(res.user);
-          } else {
-            document.getElementById('login-container').style.display = 'flex';
-            document.getElementById('app').style.display = 'none';
-          }
+  // 2. Check if already logged in via callback (Active LINE user)
+  if (typeof LINE_SESSION_USER !== 'undefined' && LINE_SESSION_USER !== null) {
+    if (LINE_SESSION_USER.status !== 'Pending' && !LINE_SESSION_USER.error) {
+      window.setSession(LINE_SESSION_USER);
+      if (window.history && window.history.replaceState) { window.history.replaceState({}, document.title, window.location.pathname); }
+      return;
+    }
+  }
+  
+  // 3. Check LocalStorage session (Instant)
+  var savedSession = safeStorage.getItem("iron_zero_session");
+  if (savedSession) {
+    currentUser = JSON.parse(savedSession);
+    document.getElementById('login-container').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+    window.applyUserRolePermissions();
+    window.refreshData();
+    return;
+  }
+
+  // 4. Default: Show Login Page immediately while background checks run
+  document.getElementById('login-container').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+  window.showLoading(false);
+
+  // 5. Background Auto-Login Attempts (Non-blocking UI)
+  if (isGAS) {
+    // Add a small delay to let UI render first
+    setTimeout(function() {
+      google.script.run
+        .withSuccessHandler(function(settings) {
+          if (settings.liffId && typeof liff !== 'undefined') {
+            liff.init({ liffId: settings.liffId }).then(function() {
+              if (liff.isLoggedIn()) {
+                window.showLoading(true, "กำลังดึงโปรไฟล์จาก LINE...");
+                liff.getProfile().then(function(profile) {
+                  google.script.run
+                    .withSuccessHandler(function(res) {
+                      if (res.success) {
+                        var user = res.user;
+                        user.avatarUrl = profile.pictureUrl;
+                        window.setSession(user);
+                      } else { window.showLoading(false); }
+                    })
+                    .verifyUserLogin("LINE", profile.userId, "");
+                });
+              } else { window.attemptBackgroundGoogleLogin(); }
+            }).catch(function(e) { window.attemptBackgroundGoogleLogin(); });
+          } else { window.attemptBackgroundGoogleLogin(); }
         })
-        .withFailureHandler(function(err) {
-          window.showLoading(false);
-          document.getElementById('login-container').style.display = 'flex';
-          document.getElementById('app').style.display = 'none';
-          window.showToast(err && err.message ? err.message : String(err), "error");
-        })
-        .ensureUserProfile();
-    });
-  });
+        .getSystemSettings();
+    }, 500);
+  }
+};
+
+window.attemptBackgroundGoogleLogin = function() {
+  if (isGAS) {
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if (res.success) {
+          window.setSession(res.user);
+        }
+      })
+      .getGoogleUser();
+  }
 };
 
 // -- SCROLL NAVIGATION LOGIC ----------------------------------
