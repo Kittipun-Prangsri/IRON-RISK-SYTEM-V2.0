@@ -1586,11 +1586,7 @@ table tbody tr:hover {
 }
 
 @keyframes loginFadeIn {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.login-header {
+  fro.login-header {
   text-align: center;
   display: flex;
   flex-direction: column;
@@ -1598,10 +1594,25 @@ table tbody tr:hover {
   gap: 8px;
 }
 
+.login-system-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0, 201, 167, 0.12);
+  border: 1px solid rgba(0, 201, 167, 0.25);
+  color: var(--accent-teal);
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  margin-bottom: 4px;
+}
+
 .login-logo {
-  width: 120px;
-  height: 120px;
-  margin-bottom: 16px;
+  width: 96px;
+  height: 96px;
+  margin-bottom: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1611,41 +1622,43 @@ table tbody tr:hover {
   width: 100%;
   height: 100%;
   object-fit: contain;
+  filter: drop-shadow(0 4px 16px rgba(0, 201, 167, 0.2));
 }
 
 .login-title {
   font-family: var(--font-display);
-  font-size: 24px;
+  font-size: 26px;
   font-weight: 700;
   color: var(--accent-teal);
   letter-spacing: 0.5px;
 }
 
 .login-subtitle {
-  font-size: 13px;
+  font-size: 12.5px;
   color: var(--text-secondary);
+  line-height: 1.4;
 }
 
 .login-tabs {
   display: flex;
   background: var(--bg-elevated);
   padding: 4px;
-  border-radius: 10px;
+  border-radius: 12px;
   border: 1px solid var(--border);
 }
 
 .login-tab-btn {
   flex: 1;
-  padding: 10px;
+  padding: 11px 12px;
   border: none;
   background: none;
   font-family: var(--font-body);
   font-size: 13px;
   font-weight: 600;
   color: var(--text-secondary);
-  border-radius: 7px;
+  border-radius: 9px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1655,12 +1668,12 @@ table tbody tr:hover {
 .login-tab-btn.active {
   background: var(--bg-card);
   color: var(--accent-teal);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25), 0 0 1px rgba(0, 201, 167, 0.4);
 }
 
 [data-theme="light"] .login-tab-btn.active {
-  box-shadow: 0 4px 10px rgba(0, 201, 167, 0.1);
-  background: var(--bg-card);
+  box-shadow: 0 4px 12px rgba(0, 201, 167, 0.15);
+  background: #ffffff;
 }
 
 .login-body {
@@ -1679,92 +1692,201 @@ table tbody tr:hover {
   animation: tabFadeIn 0.3s ease;
 }
 
+.login-sec-hint {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
 @keyframes tabFadeIn {
-  from { opacity: 0; transform: translateX(10px); }
-  to { opacity: 1; transform: translateX(0); }
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 /* SSO buttons */
 .btn-sso-group {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .btn-sso {
   width: 100%;
-  padding: 12px;
-  font-size: 14px;
-  font-weight: 600;
-  border-radius: 8px;
+  padding: 12px 16px;
+  border-radius: 12px;
   cursor: pointer;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
-  transition: all 0.2s;
+  gap: 14px;
+  transition: all 0.2s ease;
   border: 1px solid var(--border);
+  text-align: left;
 }
 
+.btn-sso:hover {
+  transform: translateY(-2px);
+}
+
+.sso-icon-wrap {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  background: rgba(255, 255, 255, 0.15);
+  flex-shrink: 0;
+}
+
+.sso-text-wrap {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.sso-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.sso-desc {
+  font-size: 11px;
+  opacity: 0.8;
+  font-weight: 400;
+}
+
+.sso-arrow {
+  font-size: 12px;
+  opacity: 0.5;
+  transition: transform 0.2s, opacity 0.2s;
+}
+
+.btn-sso:hover .sso-arrow {
+  opacity: 1;
+  transform: translateX(3px);
+}
+
+/* Health ID Button */
+.btn-healthid {
+  background: linear-gradient(135deg, #10b981 0%, #047857 100%);
+  color: #ffffff;
+  border: none;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.25);
+}
+.btn-healthid:hover {
+  background: linear-gradient(135deg, #10b981 20%, #059669 100%);
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+}
+
+/* Provider ID Button */
+.btn-providerid {
+  background: linear-gradient(135deg, #0284c7 0%, #0f766e 100%);
+  color: #ffffff;
+  border: none;
+  box-shadow: 0 4px 14px rgba(2, 132, 199, 0.25);
+}
+.btn-providerid:hover {
+  background: linear-gradient(135deg, #0369a1 0%, #115e59 100%);
+  box-shadow: 0 6px 20px rgba(2, 132, 199, 0.4);
+}
+
+/* Google SSO Button */
 .btn-google {
   background: #ffffff;
   color: #1e293b;
+  border: 1px solid #e2e8f0;
+}
+.btn-google .sso-icon-wrap {
+  background: #f8fafc;
 }
 .btn-google:hover {
   background: #f8fafc;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
 }
 
-.btn-microsoft {
-  background: #2f2f2f;
-  color: #ffffff;
-  border-color: #444;
-}
-.btn-microsoft:hover {
-  background: #3a3a3a;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-}
-
-[data-theme="light"] .btn-microsoft {
-  background: #f1f5f9;
-  color: #1e293b;
-  border-color: #e2e8f0;
-}
-[data-theme="light"] .btn-microsoft:hover {
-  background: #e2e8f0;
-}
-
-.btn-moph {
-  background: linear-gradient(135deg, #008f7a, #005f52);
+/* LINE Login Button */
+.btn-line {
+  background: linear-gradient(135deg, #06C755 0%, #00b347 100%);
   color: #ffffff;
   border: none;
+  box-shadow: 0 4px 14px rgba(6, 199, 85, 0.3);
 }
-.btn-moph:hover {
-  background: linear-gradient(135deg, #009e88, #006e60);
-  box-shadow: 0 4px 12px rgba(0, 143, 122, 0.3);
+.btn-line:hover {
+  background: linear-gradient(135deg, #06C755 20%, #00993d 100%);
+  box-shadow: 0 6px 20px rgba(6, 199, 85, 0.45);
 }
 
-/* LINE login */
-.btn-line {
-  background: #06C755;
-  color: #ffffff;
-  width: 100%;
-  padding: 12px;
+/* Inputs with Icons & Password Toggle */
+.input-with-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-with-icon .input-icon {
+  position: absolute;
+  left: 14px;
+  color: var(--text-muted);
   font-size: 14px;
-  font-weight: 600;
-  border-radius: 8px;
+  pointer-events: none;
+}
+
+.input-with-icon .form-control {
+  padding-left: 40px;
+  padding-right: 40px;
+  height: 44px;
+  border-radius: 10px;
+  font-size: 14px;
+}
+
+.input-with-icon .form-control:focus {
+  border-color: var(--accent-teal);
+  box-shadow: 0 0 0 3px rgba(0, 201, 167, 0.18);
+}
+
+.password-toggle-btn {
+  position: absolute;
+  right: 12px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
   cursor: pointer;
+  padding: 6px;
+  font-size: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  border: none;
-  transition: all 0.2s;
+  transition: color 0.2s;
 }
 
-.btn-line:hover {
-  background: #05b34c;
-  box-shadow: 0 4px 16px rgba(6, 199, 85, 0.3);
+.password-toggle-btn:hover {
+  color: var(--accent-teal);
+}
+
+.btn-submit-staff {
+  width: 100%;
+  height: 46px;
+  font-size: 14.5px;
+  font-weight: 600;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 4px;
+  background: linear-gradient(135deg, var(--accent-teal) 0%, #00a88f 100%);
+  box-shadow: 0 4px 14px rgba(0, 201, 167, 0.3);
+}
+
+.btn-submit-staff:hover {
+  box-shadow: 0 6px 20px rgba(0, 201, 167, 0.45);
+  transform: translateY(-1px);
 }
 
 /* Separator line */
@@ -1773,8 +1895,8 @@ table tbody tr:hover {
   align-items: center;
   text-align: center;
   color: var(--text-muted);
-  font-size: 12px;
-  margin: 8px 0;
+  font-size: 11.5px;
+  margin: 10px 0;
 }
 
 .divider::before,
@@ -1798,6 +1920,15 @@ table tbody tr:hover {
   gap: 8px;
 }
 
+.otp-timer-badge {
+  color: var(--accent-red);
+  font-weight: 600;
+  background: rgba(239, 68, 68, 0.1);
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+}
+
 .otp-inputs {
   display: flex;
   justify-content: space-between;
@@ -1807,13 +1938,13 @@ table tbody tr:hover {
 
 .otp-box {
   width: 45px;
-  height: 45px;
+  height: 48px;
   text-align: center;
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 700;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   color: var(--text-primary);
   outline: none;
   transition: all 0.2s;
@@ -1821,18 +1952,41 @@ table tbody tr:hover {
 
 .otp-box:focus {
   border-color: var(--accent-teal);
-  box-shadow: 0 0 0 3px rgba(0, 201, 167, 0.15);
+  box-shadow: 0 0 0 3px rgba(0, 201, 167, 0.2);
   background: var(--bg-card);
 }
 
-/* Developer panel */
+/* Developer mode toggle footer */
+.dev-tools-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px dashed var(--border);
+  transition: all 0.2s;
+  margin-top: 8px;
+}
+
+.dev-tools-toggle:hover {
+  background: rgba(0, 201, 167, 0.08);
+  color: var(--accent-teal);
+  border-color: rgba(0, 201, 167, 0.3);
+}
+
 .dev-tools-panel {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-  background: rgba(17, 34, 54, 0.85);
-  backdrop-filter: blur(10px);
+  width: 100%;
+  margin-top: 10px;
+  background: var(--bg-elevated);
   border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+});
   border-radius: 12px;
   padding: 16px;
   box-shadow: var(--shadow-card);
