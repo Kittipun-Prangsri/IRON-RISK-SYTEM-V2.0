@@ -23,7 +23,7 @@ async function verifyHosxpLogin(loginname, password) {
   if (!loginname || !password) return { ok: false, error: "กรุณากรอกชื่อผู้ใช้งานและรหัสผ่าน HOSxP" };
 
   try {
-    const res = await query("SELECT loginname, name, passweb, account_disable FROM opduser WHERE loginname = $1 LIMIT 1", [loginname]);
+    const res = await query('SELECT loginname, name, passweb, account_disable FROM "opduser_Ncd" WHERE loginname = $1 LIMIT 1', [loginname]);
     const row = res.rows[0];
     
     // Same message for unknown user / wrong password (no account enumeration).
@@ -36,7 +36,7 @@ async function verifyHosxpLogin(loginname, password) {
     return { ok: true, loginname: row.loginname, name: row.name || row.loginname };
   } catch (err) {
     if (err.code === '42P01') { // PostgreSQL: undefined_table
-      return { ok: false, error: "ไม่พบตาราง opduser ในฐานข้อมูล กรุณา Import ตาราง opduser เข้าไปใน Supabase ก่อน" };
+      return { ok: false, error: "ไม่พบตาราง opduser_Ncd ในฐานข้อมูล กรุณาตรวจสอบชื่อตารางใน Supabase อีกครั้ง" };
     }
     console.error("[hosxp login error]", err);
     return { ok: false, error: "เกิดข้อผิดพลาดในการเชื่อมต่อฐานข้อมูล HOSxP" };
