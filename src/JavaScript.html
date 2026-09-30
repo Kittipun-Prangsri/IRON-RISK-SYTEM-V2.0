@@ -154,6 +154,24 @@ window.triggerDevLogin = function() {
 window.handleSSOLogin = function(provider) {
   window.showLoading(true, "กำลังเชื่อมต่อกับ " + (provider === 'google' ? 'Google' : provider === 'microsoft' ? 'Microsoft' : 'MOPH ID') + " SSO...");
   
+  if (provider === 'providerid' && isGAS) {
+    google.script.run
+      .withSuccessHandler(function(url) {
+        if (url) {
+          window.top.location.href = url; // Leave the GAS iframe → Health ID login page
+        } else {
+          window.showLoading(false);
+          window.showToast("ไม่สามารถสร้าง URL สำหรับเข้าระบบได้", "error");
+        }
+      })
+      .withFailureHandler(function(err) {
+        window.showLoading(false);
+        window.showToast(err.toString(), "error");
+      })
+      .getProviderIdAuthUrl();
+    return;
+  }
+  
   if (provider === 'google' && isGAS) {
     google.script.run
       .withSuccessHandler(function(res) {
@@ -191,6 +209,46 @@ window.handleSSOLogin = function(provider) {
       window.setSession(mockStaff);
     }
   }, 1000);
+};
+
+window.submitHOSxPLogin = function() {
+  var user = document.getElementById('login-hosxp-user').value.trim();
+  var pass = document.getElementById('login-hosxp-password').value;
+  
+  if (!user || !pass) {
+    window.showToast("กรุณากรอกชื่อผู้ใช้งานและรหัสผ่าน HOSxP", "warning");
+    return;
+  }
+  
+  window.showLoading(true, "กำลังตรวจสอบข้อมูลใน HOSxP...");
+  
+  if (isGAS) {
+    google.script.run
+      .withSuccessHandler(function(res) {
+        window.showLoading(false);
+        if (res.success) {
+          window.setSession(res.user);
+        } else {
+          window.showToast(res.error || "รหัสผ่านไม่ถูกต้อง หรือไม่พบผู้ใช้งานนี้ใน HOSxP", "error");
+        }
+      })
+      .withFailureHandler(function(err) {
+        window.showLoading(false);
+        window.showToast(err.toString(), "error");
+      })
+      .verifyUserLogin("SSO", user, pass); // Mapping HOSxP login to SSO user matching by Email/ID
+  } else {
+    // Local mock login
+    setTimeout(function() {
+      window.showLoading(false);
+      var mockUser = MOCK_USERS.find(function(u) { return u.email === user || u.id === user; });
+      if (mockUser) {
+        window.setSession(mockUser);
+      } else {
+        window.showToast("ไม่พบผู้ใช้งานจำลองรหัสนี้", "error");
+      }
+    }, 1000);
+  }
 };
 
 // -- STATE MANAGEMENT -----------------------------------------
@@ -2411,11 +2469,16 @@ window.verifySMSOTP = function() {
 window.logout = function() {
   window.showLoading(true, "กำลังออกจากระบบ...");
   safeStorage.removeItem("iron_zero_session");
+  if (window.serverLogout) { window.serverLogout(); } // hospital-server build: clear session cookie
   currentUser = null;
   setTimeout(function() {
     window.showLoading(false);
-    document.getElementById('login-staff-email').value = ''; document.getElementById('login-staff-password').value = '';
-    document.getElementById('login-vhv-phone').value = ''; window.resetOTPStep();
+    // Clear whichever login inputs this version of the login page has.
+    ['login-staff-email', 'login-staff-password', 'login-vhv-phone', 'login-hosxp-password'].forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) { el.value = ''; }
+    });
+    if (document.getElementById('otp-step-phone')) { window.resetOTPStep(); }
     document.getElementById('login-container').style.display = 'flex'; document.getElementById('app').style.display = 'none';
     window.showToast("ออกจากระบบสำเร็จแล้ว 🔒", "info");
   }, 600);
@@ -2451,6 +2514,8 @@ window.initAuthSession = function() {
       window.showLoading(false);
       return;
     }
+    // Any other login error (bad redirect URI, no Provider ID, ...) — tell the user.
+    setTimeout(function() { window.showToast(String(LINE_SESSION_ERROR), "error"); }, 300);
   }
 
   // 2. Check if already logged in via callback (Active LINE user)

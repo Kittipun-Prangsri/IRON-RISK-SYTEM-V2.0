@@ -14,6 +14,23 @@
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
+  <!-- LINE / Provider ID callback result from doGet() (template vars lineUser / lineError).
+       Read as JSON text so an unprocessed template (local/Firebase build) just yields null. -->
+  <script type="application/json" id="line-session-user"><?!= lineUser ?></script>
+  <script type="application/json" id="line-session-error"><?!= lineError ?></script>
+  <script>
+    function readSessionJson(id) {
+      try {
+        var el = document.getElementById(id);
+        return el ? JSON.parse(el.textContent) : null;
+      } catch (e) {
+        return null;
+      }
+    }
+    var LINE_SESSION_USER = readSessionJson('line-session-user');
+    var LINE_SESSION_ERROR = readSessionJson('line-session-error');
+  </script>
+
   <?!= include('Stylesheet'); ?>
 </head>
 

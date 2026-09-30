@@ -34,7 +34,7 @@ function getLineToken() {
 function getSystemSettings() {
   var props = PropertiesService.getScriptProperties();
   // URL จริงของ GAS Web App — ต้องตรงกับ Callback URL ที่ลงทะเบียนใน LINE Developers Console
-  var KNOWN_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxEp0MyUahOSzVhEJdMEnCK4ehDvgNNMhb4Fpubk2FirS7ezq3Af06LKnV7bjq_CPpKHQ/exec";
+  var KNOWN_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwB5wqUpAxkOgrzyYE8D4eXNidVxE3lI2cyobUO5EeSV3IKyr2NQZqdGrLQrsbqbK0YDw/exec";
   var scriptUrl = "";
   try { scriptUrl = ScriptApp.getService().getUrl(); } catch(e) { scriptUrl = ""; }
   // ใช้ scriptUrl จาก runtime ก่อน ถ้าไม่ได้ให้ใช้ KNOWN_SCRIPT_URL
@@ -48,6 +48,10 @@ function getSystemSettings() {
     // ลำดับความสำคัญ: ค่าที่บันทึกไว้ใน Properties > scriptUrl จาก runtime > KNOWN_SCRIPT_URL
     lineRedirectUri: storedRedirectUri || scriptUrl,
     liffId: props.getProperty("LIFF_ID") || "2010316731-yX26Zf8M",
+    healthIdClientId: props.getProperty("HEALTHID_CLIENT_ID") || "01939ac3-9394-7b9b-b3a4-0d53f13d3f32",
+    healthIdSecret: props.getProperty("HEALTHID_CLIENT_SECRET") || "",
+    providerIdClientId: props.getProperty("PROVIDERID_CLIENT_ID") || "9370d9a5-597b-40da-b61a-6df9143f62ce",
+    providerIdSecret: props.getProperty("PROVIDERID_SECRET_KEY") || "",
     scriptUrl: scriptUrl
   };
 }
@@ -61,6 +65,10 @@ function saveSystemSettings(settings) {
   if (settings.lineClientSecret !== undefined) { props.setProperty("LINE_CLIENT_SECRET", settings.lineClientSecret); }
   if (settings.lineRedirectUri !== undefined) { props.setProperty("LINE_REDIRECT_URI", settings.lineRedirectUri); }
   if (settings.liffId !== undefined) { props.setProperty("LIFF_ID", settings.liffId); }
+  if (settings.healthIdClientId !== undefined) { props.setProperty("HEALTHID_CLIENT_ID", settings.healthIdClientId); }
+  if (settings.healthIdSecret !== undefined) { props.setProperty("HEALTHID_CLIENT_SECRET", settings.healthIdSecret); }
+  if (settings.providerIdClientId !== undefined) { props.setProperty("PROVIDERID_CLIENT_ID", settings.providerIdClientId); }
+  if (settings.providerIdSecret !== undefined) { props.setProperty("PROVIDERID_SECRET_KEY", settings.providerIdSecret); }
   return { success: true };
 }
 
@@ -138,22 +146,37 @@ function doGet(e) {
   var lineError = null;
   var googleEmail = "";
   
-  // 1. Handle LINE Login Callback
   if (e && e.parameter && e.parameter.code) {
-    try {
-      var callbackResult = handleLineLoginCallback(e.parameter.code);
-      if (callbackResult && callbackResult.error) {
-        lineError = callbackResult.error;
-        // ถ้าเป็น Pending ให้ส่ง lineUser ที่มี status:Pending กลับมาด้วย
-        if (callbackResult.user) {
-          lineUser = callbackResult.user;
+    if (e.parameter.state === "moph") {
+      try {
+        var mophResult = handleProviderIdLoginCallback(e.parameter.code);
+        if (mophResult && mophResult.error) {
+          lineError = mophResult.error;
+          if (mophResult.user) lineUser = mophResult.user;
+        } else if (mophResult) {
+          lineUser = mophResult;
         }
-      } else if (callbackResult) {
-        lineUser = callbackResult;
+      } catch (err) {
+        console.error("MOPH Login failed:", err);
+        lineError = err.toString();
       }
-    } catch (err) {
-      console.error("LINE Login failed:", err);
-      lineError = err.toString();
+    } else {
+      // 1. Handle LINE Login Callback
+      try {
+        var callbackResult = handleLineLoginCallback(e.parameter.code);
+        if (callbackResult && callbackResult.error) {
+          lineError = callbackResult.error;
+          // ถ้าเป็น Pending ให้ส่ง lineUser ที่มี status:Pending กลับมาด้วย
+          if (callbackResult.user) {
+            lineUser = callbackResult.user;
+          }
+        } else if (callbackResult) {
+          lineUser = callbackResult;
+        }
+      } catch (err) {
+        console.error("LINE Login failed:", err);
+        lineError = err.toString();
+      }
     }
   }
 
@@ -165,8 +188,8 @@ function doGet(e) {
   }
 
   var template = HtmlService.createTemplateFromFile("Index");
-  template.lineUser = lineUser ? JSON.stringify(lineUser) : "null";
-  template.lineError = lineError ? JSON.stringify(lineError) : "null";
+  template.lineUser = lineUser ? JSON.stringify(lineUser).replace(/</g, "\\u003c") : "null";
+  template.lineError = lineError ? JSON.stringify(lineError).replace(/</g, "\\u003c") : "null";
   template.googleEmail = googleEmail || "";
 
   return template.evaluate()
@@ -184,6 +207,166 @@ function getGoogleUser() {
   if (!email) return { success: false, error: "ไม่พบข้อมูล Google Account ของคุณ" };
   
   return verifyUserLogin("SSO", email, "");
+}
+
+// ── MOPH ID OAUTH FLOW ──────────────────────────────────────
+function getProviderIdAuthUrl() {
+  var settings = getSystemSettings();
+  var clientId = settings.healthIdClientId;
+  var redirectUri = settings.scriptUrl;
+  
+  if (!clientId) throw new Error("ยังไม่ได้ตั้งค่า Health ID Client ID (Script Property: HEALTHID_CLIENT_ID)");
+  // Format from "คู่มือการเชื่อมต่อระบบ Provider ID ด้วย OAuth ของ Health ID":
+  // {HealthID-URL}/oauth/redirect?client_id=&redirect_uri=&response_type=code  (state is optional)
+  var url = "https://moph.id.th/oauth/redirect" +
+            "?client_id=" + encodeURIComponent(clientId) +
+            "&redirect_uri=" + encodeURIComponent(redirectUri) +
+            "&response_type=code" +
+            "&state=moph";
+  return url;
+}
+
+function parseJsonSafe(text) {
+  try { return JSON.parse(text); } catch (err) { return { message: String(text).slice(0, 200) }; }
+}
+
+function handleProviderIdLoginCallback(code) {
+  var settings = getSystemSettings();
+  var redirectUri = settings.scriptUrl;
+  
+  var healthIdClientId = settings.healthIdClientId;
+  var healthIdSecret = settings.healthIdSecret;
+  var providerClientId = settings.providerIdClientId;
+  var providerSecret = settings.providerIdSecret;
+  
+  if (!healthIdClientId || !healthIdSecret || !providerClientId || !providerSecret) {
+    return { error: "ยังไม่ได้ตั้งค่า Health ID / Provider ID Client ID หรือ Secret ในระบบ" };
+  }
+
+  // 1. Health ID: code → access_token
+  var healthPayload = {
+    grant_type: "authorization_code",
+    code: code,
+    redirect_uri: redirectUri,
+    client_id: healthIdClientId,
+    client_secret: healthIdSecret
+  };
+  
+  var healthResp = UrlFetchApp.fetch("https://moph.id.th/api/v1/token", {
+    method: "post",
+    contentType: "application/x-www-form-urlencoded",
+    payload: Object.keys(healthPayload).map(function(k) { return encodeURIComponent(k) + "=" + encodeURIComponent(healthPayload[k]); }).join("&"),
+    muteHttpExceptions: true
+  });
+  
+  var healthData = parseJsonSafe(healthResp.getContentText());
+  var healthToken = healthData.data && healthData.data.access_token;
+  if (!healthToken) {
+    return { error: "Health ID Token error: " + (healthData.message || healthResp.getResponseCode()) };
+  }
+
+  // 2. Provider ID: Health ID token → provider access_token
+  var providerTokenResp = UrlFetchApp.fetch("https://provider.id.th/api/v1/services/token", {
+    method: "post",
+    contentType: "application/json",
+    payload: JSON.stringify({ client_id: providerClientId, secret_key: providerSecret, token_by: "Health ID", token: healthToken }),
+    muteHttpExceptions: true
+  });
+  
+  if (providerTokenResp.getResponseCode() === 400) {
+    return { error: "บัญชี Health ID นี้ยังไม่มี Provider ID กรุณาสมัคร Provider ID ก่อนใช้งาน" };
+  }
+  
+  var providerTokenData = parseJsonSafe(providerTokenResp.getContentText());
+  var providerToken = providerTokenData.data && providerTokenData.data.access_token;
+  if (!providerToken) {
+    return { error: "Provider ID Token error: " + (providerTokenData.message || providerTokenResp.getResponseCode()) };
+  }
+
+  // 3. Provider ID: profile
+  var profileResp = UrlFetchApp.fetch("https://provider.id.th/api/v1/services/profile", {
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer " + providerToken,
+      "client-id": providerClientId,
+      "secret-key": providerSecret
+    },
+    muteHttpExceptions: true
+  });
+  
+  var profileData = parseJsonSafe(profileResp.getContentText());
+  var provider = profileData.data;
+  if (profileResp.getResponseCode() === 404) {
+    return { error: "ไม่พบข้อมูล Provider ID ของบัญชีนี้" };
+  }
+  if (!provider || !provider.provider_id) {
+    return { error: "ไม่สามารถดึงข้อมูลโปรไฟล์ Provider ID ได้: " + (profileData.message || profileResp.getResponseCode()) };
+  }
+
+  // provider_id is the stable per-person key (stored in the Users sheet's Email column for matching).
+  var identifier = provider.provider_id;
+  var fullName = [provider.special_title_th || provider.title_th || "", provider.name_th || ""].join(" ").trim() || provider.name_eng;
+
+  var result = verifyUserLogin("MOPH", identifier, "");
+  if (result.success) {
+    var user = result.user;
+    user.displayName = fullName || user.name;
+    return user;
+  }
+  // Already registered but waiting for approval — don't register a duplicate row.
+  if (result.pending) {
+    result.user.displayName = fullName || result.user.name;
+    return { error: result.error, user: result.user };
+  }
+  if (result.error && result.error.indexOf("ถูกระงับ") !== -1) {
+    return { error: result.error };
+  }
+
+  // Not found - Auto Register
+  var newUserId = autoRegisterMophUser(provider, identifier, fullName);
+  var pendingUser = {
+    id: newUserId,
+    name: fullName,
+    role: "รอการอนุมัติ",
+    email: "",
+    lineUserId: "",
+    phone: "",
+    assignedVillage: "",
+    status: "Pending",
+    displayName: fullName
+  };
+  return {
+    error: "บัญชีของคุณกำลังรอการอนุมัติจากผู้ดูแลระบบ",
+    user: pendingUser
+  };
+}
+
+function autoRegisterMophUser(provider, identifier, fullName) {
+  setupDatabase();
+  var ss = getSpreadsheet();
+  if (!ss) return null;
+  var usersSheet = ss.getSheetByName(SHEET_USERS) || ss.getSheetByName("Users");
+  
+  var headers = usersSheet.getRange(1, 1, 1, usersSheet.getLastColumn()).getValues()[0];
+  var idxId = headers.indexOf("ID");
+  var idxName = headers.indexOf("Name");
+  var idxRole = headers.indexOf("Role");
+  var idxStatus = headers.indexOf("Status");
+  var idxEmail = headers.indexOf("Email");
+
+  var timestamp = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyyMMdd_HHmmss");
+  var newId = "H" + timestamp;
+
+  var newRow = new Array(headers.length).fill("");
+  if (idxId !== -1) newRow[idxId] = newId;
+  if (idxName !== -1) newRow[idxName] = fullName;
+  if (idxRole !== -1) newRow[idxRole] = "เจ้าหน้าที่ รพ.";
+  if (idxStatus !== -1) newRow[idxStatus] = "Pending";
+  if (idxEmail !== -1) newRow[idxEmail] = identifier; // Store identifier in Email for SSO login match
+
+  usersSheet.appendRow(newRow);
+  logActivity("ลงทะเบียน", "Auto-register MOPH user รอการอนุมัติ", identifier);
+  return newId;
 }
 
 function handleLineLoginCallback(code) {
@@ -963,7 +1146,9 @@ function verifyUserLogin(loginType, identifier, passwordOrToken) {
     var status = idxStatus !== -1 ? String(row[idxStatus]).trim() : "Active";
     
     var matched = false;
-    if (loginType === "SSO" && idxEmail !== -1 && String(row[idxEmail]).trim().toLowerCase() === String(identifier).trim().toLowerCase()) {
+    if ((loginType === "SSO" || loginType === "MOPH") && idxEmail !== -1 && String(row[idxEmail]).trim().toLowerCase() === String(identifier).trim().toLowerCase()) {
+      matched = true;
+    } else if ((loginType === "SSO" || loginType === "MOPH") && idxId !== -1 && String(row[idxId]).trim().toLowerCase() === String(identifier).trim().toLowerCase()) {
       matched = true;
     } else if (loginType === "OTP" && idxPhone !== -1 && String(row[idxPhone]).replace(/[- ]/g, "") === String(identifier).replace(/[- ]/g, "")) {
       matched = true;
