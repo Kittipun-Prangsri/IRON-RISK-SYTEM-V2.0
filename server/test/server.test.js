@@ -1,17 +1,21 @@
-// Integration tests against a real local MySQL. Uses two throwaway databases
-// (iron_risk_test, iron_risk_hosxp_test); MOPH endpoints are stubbed.
-// Run: npm test   (override credentials with TEST_DB_USER / TEST_DB_PASSWORD)
+// Integration tests: app DB = a throwaway PostgreSQL started by embedded-postgres
+// (same engine as Supabase); HOSxP = mock "opduser" table in a local MySQL
+// (iron_risk_hosxp_test). MOPH endpoints are stubbed.
+// Run: npm test   (override MySQL credentials with TEST_DB_USER / TEST_DB_PASSWORD)
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const crypto = require("crypto");
 
-const TEST_DB = "iron_risk_test";
+const os = require("os");
+const path = require("path");
 const HOSXP_DB = "iron_risk_hosxp_test";
+const PG_PORT = 54329;
+const PG_PASSWORD = crypto.randomBytes(12).toString("hex");
 Object.assign(process.env, {
   ENV_FILE: "/nonexistent/.env",
   NODE_ENV: "test",
   SESSION_SECRET: crypto.randomBytes(32).toString("hex"),
-  DB_HOST: "127.0.0.1", DB_USER: process.env.TEST_DB_USER || "root", DB_PASSWORD: process.env.TEST_DB_PASSWORD || "", DB_NAME: TEST_DB,
+  DATABASE_URL: `postgres://postgres:${PG_PASSWORD}@127.0.0.1:${PG_PORT}/iron_risk_test`, DB_SCHEMA: "iron_risk", DB_SSL: "false",
   HOSXP_ENABLED: "true", HOSXP_DB_HOST: "127.0.0.1", HOSXP_DB_USER: process.env.TEST_DB_USER || "root",
   HOSXP_DB_PASSWORD: process.env.TEST_DB_PASSWORD || "", HOSXP_DB_NAME: HOSXP_DB, HOSXP_PASSWORD_HASH: "md5",
   MOPH_ENV: "prd", HEALTHID_CLIENT_ID: "hid-client", HEALTHID_CLIENT_SECRET: "hid-secret",
@@ -28,6 +32,7 @@ const { closeHosxp } = require("../src/auth/hosxp");
 const md5 = (s) => crypto.createHash("md5").update(s).digest("hex").toUpperCase();
 let server;
 let base;
+let pgServer;
 
 // ── tiny HTTP client with a cookie jar ────────────────────────────────────
 function jar() {
@@ -89,8 +94,18 @@ global.fetch = async (url, opts) => {
 
 // ── setup / teardown ──────────────────────────────────────────────────────
 test.before(async () => {
-  const admin = await mysql.createConnection({ host: "127.0.0.1", user: process.env.DB_USER, password: process.env.DB_PASSWORD, multipleStatements: true });
-  await admin.query(`CREATE DATABASE IF NOT EXISTS ${TEST_DB} CHARACTER SET utf8mb4; CREATE DATABASE IF NOT EXISTS ${HOSXP_DB} CHARACTER SET utf8mb4;`);
+  const EmbeddedPostgres = (await import("embedded-postgres")).default;
+  pgServer = new EmbeddedPostgres({
+    databaseDir: path.join(os.tmpdir(), `iron-risk-pg-${process.pid}`),
+    user: "postgres", password: PG_PASSWORD, port: PG_PORT, persistent: false, onLog: () => {},
+    initdbFlags: ["--encoding=UTF8", "--locale=C"]
+  });
+  await pgServer.initialise();
+  await pgServer.start();
+  await pgServer.createDatabase("iron_risk_test");
+
+  const admin = await mysql.createConnection({ host: "127.0.0.1", user: process.env.HOSXP_DB_USER, password: process.env.HOSXP_DB_PASSWORD, multipleStatements: true });
+  await admin.query(`CREATE DATABASE IF NOT EXISTS ${HOSXP_DB} CHARACTER SET utf8mb4;`);
   await admin.query(`
     USE ${HOSXP_DB};
     DROP TABLE IF EXISTS opduser;
@@ -114,6 +129,7 @@ test.after(async () => {
   server.close();
   await db.close();
   await closeHosxp();
+  await pgServer.stop();
 });
 
 // ── tests ─────────────────────────────────────────────────────────────────
@@ -299,7 +315,7 @@ test("logout clears the session; a disabled user loses access immediately", asyn
 });
 
 test("brute-force guard: 10 failures lock that username only; successes never count", async () => {
-  await db.query("INSERT INTO users (id, name, role, status, hosxp_login) VALUES ('ST_BF', 'bf', 'เจ้าหน้าที่ รพ.', 'Active', 'newdoc') ON DUPLICATE KEY UPDATE id = id");
+  await db.query("INSERT INTO users (id, name, role, status, hosxp_login) VALUES ('ST_BF', 'bf', 'เจ้าหน้าที่ รพ.', 'Active', 'newdoc') ON CONFLICT DO NOTHING");
   for (let i = 0; i < 10; i++) {
     assert.equal((await rpc(jar(), "verifyUserLogin", "SSO", "newdoc", "wrong")).status, 200);
   }
@@ -308,5 +324,24 @@ test("brute-force guard: 10 failures lock that username only; successes never co
 
   for (let i = 0; i < 12; i++) {
     assert.equal((await rpc(jar(), "verifyUserLogin", "SSO", "nurse1", "secret")).body.result.success, true);
+  }
+});
+
+test("Supabase API roles (anon / authenticated) cannot read the app schema", async () => {
+  const { checkout } = db;
+  const client = await checkout();
+  try {
+    await client.query("DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN CREATE ROLE anon NOLOGIN; CREATE ROLE authenticated NOLOGIN; END IF; END $$");
+    // Simulate Supabase's broad default grants, then re-run db:init — it must revoke them.
+    await client.query("GRANT USAGE ON SCHEMA iron_risk TO anon, authenticated; GRANT SELECT ON ALL TABLES IN SCHEMA iron_risk TO anon, authenticated");
+    await initDb();
+    for (const role of ["anon", "authenticated"]) {
+      await client.query(`SET ROLE ${role}`);
+      await assert.rejects(client.query("SELECT * FROM iron_risk.children"), /permission denied/);
+      await client.query("RESET ROLE");
+    }
+  } finally {
+    await client.query("RESET ROLE").catch(() => {});
+    client.release();
   }
 });

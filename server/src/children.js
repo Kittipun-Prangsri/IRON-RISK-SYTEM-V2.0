@@ -64,10 +64,10 @@ const UPSERT_SQL = `
   INSERT INTO children (id, ${Object.values(EDITABLE).join(", ")},
     score_hct, score_nutrition, score_iron, score_food, score_social, total_score, status, active)
   VALUES (?, ${Object.keys(EDITABLE).map(() => "?").join(", ")}, ?, ?, ?, ?, ?, ?, ?, 1)
-  ON DUPLICATE KEY UPDATE ${Object.values(EDITABLE).map((c) => `${c} = VALUES(${c})`).join(", ")},
-    score_hct = VALUES(score_hct), score_nutrition = VALUES(score_nutrition), score_iron = VALUES(score_iron),
-    score_food = VALUES(score_food), score_social = VALUES(score_social), total_score = VALUES(total_score),
-    status = VALUES(status), active = 1`;
+  ON CONFLICT (id) DO UPDATE SET ${Object.values(EDITABLE).map((c) => `${c} = EXCLUDED.${c}`).join(", ")},
+    score_hct = EXCLUDED.score_hct, score_nutrition = EXCLUDED.score_nutrition, score_iron = EXCLUDED.score_iron,
+    score_food = EXCLUDED.score_food, score_social = EXCLUDED.score_social, total_score = EXCLUDED.total_score,
+    status = EXCLUDED.status, active = 1`;
 
 function newChildId() {
   return `CHILD_${Date.now()}_${crypto.randomInt(100, 999)}`;
@@ -79,11 +79,11 @@ async function getData(user) {
     `SELECT * FROM children WHERE active = 1${village ? " AND village = ?" : ""} ORDER BY created_at, id`,
     village ? [village] : []
   );
-  const logs = await query("SELECT ts, user, action, details FROM activity_log ORDER BY id DESC LIMIT 50");
+  const logs = await query("SELECT ts, username, action, details FROM activity_log ORDER BY id DESC LIMIT 50");
 
   const result = {
     children: children.map(rowToChild),
-    logs: logs.map((l) => ({ timestamp: sqlToDisplay(l.ts), user: l.user, action: l.action, details: l.details })),
+    logs: logs.map((l) => ({ timestamp: sqlToDisplay(l.ts), user: l.username, action: l.action, details: l.details })),
     villages: {},
     userEmail: userLabel(user),
     sheetName: "MySQL (server โรงพยาบาล)",
@@ -101,7 +101,7 @@ async function saveChild(user, childData) {
   const id = childData.id ? String(childData.id) : newChildId();
 
   return transaction(async (conn) => {
-    const [rows] = await conn.query("SELECT * FROM children WHERE id = ? FOR UPDATE", [id]);
+    const rows = await conn.query("SELECT * FROM children WHERE id = ? FOR UPDATE", [id]);
     const existing = rows[0] || null;
     if (village && ((existing && existing.village !== village) || (childData.village !== undefined && childData.village !== village))) {
       throw new ForbiddenError("คุณสามารถบันทึกข้อมูลได้เฉพาะในหมู่บ้านที่รับผิดชอบ");
@@ -131,7 +131,7 @@ async function deleteChild(user, childId) {
 async function saveChildrenBatch(user, list) {
   if (!Array.isArray(list)) return { success: false, error: "รูปแบบข้อมูลนำเข้าไม่ถูกต้อง" };
   return transaction(async (conn) => {
-    const [existingRows] = await conn.query("SELECT * FROM children");
+    const existingRows = await conn.query("SELECT * FROM children FOR UPDATE");
     const byId = new Map(existingRows.map((r) => [String(r.id), r]));
     const byName = new Map(existingRows.filter((r) => r.name).map((r) => [String(r.name).trim(), r]));
 

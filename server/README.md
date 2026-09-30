@@ -1,29 +1,33 @@
 # Iron Zero Risk — ติดตั้งบน Server โรงพยาบาล (Linux)
 
-ระบบรันด้วย Node.js และเก็บข้อมูลในฐานข้อมูล MySQL/MariaDB บน server ของโรงพยาบาล หน้าเว็บใช้ไฟล์ชุดเดียวกับเวอร์ชัน Google Apps Script (`../src/*.html`)
+ระบบรันด้วย Node.js บน server ของโรงพยาบาล และเก็บข้อมูลในฐานข้อมูล PostgreSQL บน **Supabase** หน้าเว็บใช้ไฟล์ชุดเดียวกับเวอร์ชัน Google Apps Script (`../src/*.html`)
 
 ```
-เบราว์เซอร์ ──HTTPS──► nginx ──► Node.js (พอร์ต 3000) ──► MySQL: iron_risk (ข้อมูลหลัก)
+เบราว์เซอร์ ──HTTPS──► nginx ──► Node.js (พอร์ต 3000) ──► Supabase: schema iron_risk (ข้อมูลหลัก)
                                         ├──► HOSxP DB (บัญชีอ่านอย่างเดียว)
                                         └──► moph.id.th / provider.id.th (ล็อกอิน Provider ID)
 ```
 
 ## 1. สิ่งที่ต้องมี
 - Linux (Ubuntu 22.04+/Rocky 9+), **Node.js 20 ขึ้นไป**, nginx
-- MySQL 8 หรือ MariaDB 10.5+ (ใช้ตัวเดียวกับ HOSxP ได้ แต่ต้องเป็น **database แยก**)
-- server ต้องเชื่อมต่อออกไปที่ `moph.id.th` และ `provider.id.th` (HTTPS 443) ได้
+- โปรเจกต์ Supabase (ควรเลือก region **Singapore**)
+- server ต้องเชื่อมต่อออกไปที่ `*.pooler.supabase.com` (พอร์ต 5432), `moph.id.th` และ `provider.id.th` (HTTPS 443) ได้
 
-## 2. สร้างฐานข้อมูลและผู้ใช้
+> **ข้อมูลเด็กจะอยู่บน cloud ของ Supabase ไม่ได้อยู่ในโรงพยาบาล** ควรได้รับอนุมัติตามนโยบาย PDPA ของโรงพยาบาลก่อนใช้งานจริง
+
+## 2. เตรียม Supabase
+1. เปิด Supabase Dashboard → โปรเจกต์ → ปุ่ม **Connect** → เลือก **Session pooler** (พอร์ต 5432)
+2. คัดลอก URI ทั้งบรรทัด แล้วแทน `[YOUR-PASSWORD]` ด้วยรหัสฐานข้อมูล (ลืมรหัสได้ที่ Database → Settings → Reset database password)
+3. นำไปใส่ `DATABASE_URL=` ใน `.env` — **ใช้ Session pooler เท่านั้น** ไม่ใช่ Transaction pooler (6543)
+4. (แนะนำ) Database → Settings → SSL Configuration → Download certificate แล้วตั้ง `DB_SSL_CA=/opt/iron-risk/server/supabase-ca.crt`
+
+ตารางจะถูกสร้างใน schema `iron_risk` **ไม่ใช่ `public`** — ห้ามเพิ่ม `iron_risk` ใน Settings → API → Exposed schemas เพราะจะเปิดให้อ่านผ่าน API ได้ (`db:init` เปิด RLS และถอนสิทธิ์ anon/authenticated ไว้อีกชั้นแล้ว)
+
+บัญชี HOSxP อ่านอย่างเดียว (สร้างบน HOSxP โดยผู้ดูแล):
 ```sql
-CREATE DATABASE iron_risk CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER 'iron_risk'@'localhost' IDENTIFIED BY '<รหัสผ่านยาว>';
-GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, INDEX, ALTER ON iron_risk.* TO 'iron_risk'@'localhost';
-
--- บัญชีอ่านอย่างเดียวสำหรับ HOSxP (ใช้แค่ตาราง opduser สำหรับล็อกอิน)
-CREATE USER 'iron_risk_ro'@'localhost' IDENTIFIED BY '<รหัสผ่านอีกชุด>';
-GRANT SELECT ON hos.opduser TO 'iron_risk_ro'@'localhost';
+CREATE USER 'iron_risk_ro'@'<IP server>' IDENTIFIED BY '<รหัสผ่าน>';
+GRANT SELECT ON hos.opduser TO 'iron_risk_ro'@'<IP server>';
 ```
-**ห้ามสร้างตารางของระบบนี้ในฐานข้อมูล HOSxP** เพราะตอนอัปเกรด HOSxP ตารางอาจถูกลบหรือแก้
 
 ## 3. ติดตั้งโปรแกรม
 ```bash
@@ -33,7 +37,7 @@ cd /opt/iron-risk/server
 npm ci --omit=dev
 cp .env.example .env && chmod 600 .env
 nano .env          # กรอกค่าตามหัวข้อ 4
-npm run db:init    # สร้างตาราง
+npm run db:init    # สร้าง schema และตาราง บน Supabase
 ```
 
 ## 4. ตั้งค่า `.env`
@@ -41,7 +45,8 @@ npm run db:init    # สร้างตาราง
 |---|---|
 | `PUBLIC_BASE_URL` | URL ที่ผู้ใช้เปิด เช่น `https://ironrisk.khh.go.th` |
 | `SESSION_SECRET` | สุ่มใหม่: `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"` |
-| `DB_*` | บัญชี `iron_risk` จากหัวข้อ 2 |
+| `DATABASE_URL` | connection string จาก Supabase (หัวข้อ 2) |
+| `DB_SCHEMA` | `iron_risk` (ค่าเริ่มต้น) |
 | `HOSXP_ENABLED=true`, `HOSXP_DB_*` | บัญชี `iron_risk_ro` และชื่อฐานข้อมูล HOSxP |
 | `HOSXP_PASSWORD_HASH` | วิธีเก็บ `opduser.passweb` ของโรงพยาบาล: `md5` หรือ `plain` **ต้องยืนยันกับผู้ดูแล HOSxP** |
 | `HEALTHID_*`, `PROVIDERID_*` | ค่าที่ได้จากสำนักสุขภาพดิจิทัล |
@@ -67,7 +72,7 @@ node scripts/import-sheets.js --children "ข้อมูลเด็ก.csv" --
 ```ini
 [Unit]
 Description=Iron Zero Risk
-After=network.target mysql.service
+After=network-online.target
 
 [Service]
 WorkingDirectory=/opt/iron-risk/server
@@ -105,10 +110,12 @@ server { listen 80; server_name ironrisk.khh.go.th; return 301 https://$host$req
 ```
 
 ## 8. สำรองข้อมูล
+Supabase แผนฟรีไม่มี backup ให้ดาวน์โหลด ควรสำรองเองทุกคืน (ต้องติดตั้ง `postgresql` client เวอร์ชันเดียวกับ Supabase ขึ้นไป):
 ```bash
-# crontab ของ root: สำรองทุกคืน 02:00 เก็บ 30 วัน
-0 2 * * * mysqldump --single-transaction iron_risk | gzip > /backup/iron_risk_$(date +\%F).sql.gz && find /backup -name 'iron_risk_*.sql.gz' -mtime +30 -delete
+# crontab ของ root: 02:00 ทุกคืน เก็บ 30 วัน (อ่าน DATABASE_URL จาก .env)
+0 2 * * * . /opt/iron-risk/server/.env && pg_dump "$DATABASE_URL" -n iron_risk | gzip > /backup/iron_risk_$(date +\%F).sql.gz && find /backup -name 'iron_risk_*.sql.gz' -mtime +30 -delete
 ```
+ไฟล์สำรองมีข้อมูลเด็ก — เก็บในเครื่องที่ปลอดภัยและจำกัดสิทธิ์ (`chmod 700 /backup`)
 
 ## 9. อัปเดตเวอร์ชัน
 ```bash
@@ -125,5 +132,5 @@ cd /opt/iron-risk && git pull && cd server && npm ci --omit=dev && npm run db:in
 
 ## ทดสอบ (สำหรับนักพัฒนา)
 ```bash
-npm test   # ต้องมี MySQL ที่ localhost; สร้างฐานข้อมูลทดสอบ iron_risk_test และ iron_risk_hosxp_test
+npm test   # เปิด PostgreSQL ชั่วคราวเอง (embedded-postgres); จำลอง HOSxP ด้วย MySQL ที่ localhost (iron_risk_hosxp_test)
 ```

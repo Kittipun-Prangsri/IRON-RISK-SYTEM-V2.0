@@ -1,4 +1,4 @@
-// One-time migration: Google Sheets (exported as CSV) → MySQL.
+// One-time migration: Google Sheets (exported as CSV) → PostgreSQL / Supabase.
 // In Google Sheets, open each tab → File → Download → Comma-separated values (.csv), then:
 //   node scripts/import-sheets.js --children "ข้อมูลเด็ก.csv" --users Users.csv \
 //        --medicine MedicineLog.csv --activity ActivityLog.csv [--dry-run]
@@ -113,14 +113,14 @@ async function importChildren(conn, rows) {
          nutrition, iron, food, social, guardian, score_hct, score_nutrition, score_iron, score_food, score_social,
          total_score, status, last_date, notes, active)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE name = VALUES(name), age = VALUES(age), house = VALUES(house), moo = VALUES(moo),
-         village = VALUES(village), tambon = VALUES(tambon), amphoe = VALUES(amphoe), province = VALUES(province),
-         lat = VALUES(lat), lng = VALUES(lng), hct = VALUES(hct), weight = VALUES(weight), height = VALUES(height),
-         nutrition = VALUES(nutrition), iron = VALUES(iron), food = VALUES(food), social = VALUES(social),
-         guardian = VALUES(guardian), score_hct = VALUES(score_hct), score_nutrition = VALUES(score_nutrition),
-         score_iron = VALUES(score_iron), score_food = VALUES(score_food), score_social = VALUES(score_social),
-         total_score = VALUES(total_score), status = VALUES(status), last_date = VALUES(last_date),
-         notes = VALUES(notes), active = VALUES(active)`,
+       ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, age = EXCLUDED.age, house = EXCLUDED.house, moo = EXCLUDED.moo,
+         village = EXCLUDED.village, tambon = EXCLUDED.tambon, amphoe = EXCLUDED.amphoe, province = EXCLUDED.province,
+         lat = EXCLUDED.lat, lng = EXCLUDED.lng, hct = EXCLUDED.hct, weight = EXCLUDED.weight, height = EXCLUDED.height,
+         nutrition = EXCLUDED.nutrition, iron = EXCLUDED.iron, food = EXCLUDED.food, social = EXCLUDED.social,
+         guardian = EXCLUDED.guardian, score_hct = EXCLUDED.score_hct, score_nutrition = EXCLUDED.score_nutrition,
+         score_iron = EXCLUDED.score_iron, score_food = EXCLUDED.score_food, score_social = EXCLUDED.score_social,
+         total_score = EXCLUDED.total_score, status = EXCLUDED.status, last_date = EXCLUDED.last_date,
+         notes = EXCLUDED.notes, active = EXCLUDED.active`,
       [c.id, c.name, c.age, c.house, c.moo, c.village, c.tambon, c.amphoe, c.province, c.lat, c.lng, c.hct, c.weight, c.height,
         c.nutrition, c.iron, c.food, c.social, c.guardian, scores.hct, scores.nutrition, scores.iron, scores.food, scores.social,
         totalScore, status, c.lastDate, c.notes, c.active ? 1 : 0]
@@ -141,9 +141,9 @@ async function importUsers(conn, rows) {
     await conn.query(
       `INSERT INTO users (id, name, role, email, line_user_id, phone, assigned_village, status, provider_id)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE name = VALUES(name), role = VALUES(role), email = VALUES(email),
-         line_user_id = VALUES(line_user_id), phone = VALUES(phone), assigned_village = VALUES(assigned_village),
-         status = VALUES(status), provider_id = COALESCE(VALUES(provider_id), provider_id)`,
+       ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, role = EXCLUDED.role, email = EXCLUDED.email,
+         line_user_id = EXCLUDED.line_user_id, phone = EXCLUDED.phone, assigned_village = EXCLUDED.assigned_village,
+         status = EXCLUDED.status, provider_id = COALESCE(EXCLUDED.provider_id, users.provider_id)`,
       [id, pick(r, ["Name", "name"]), pick(r, ["Role", "role"]) || "รอการอนุมัติ", providerId ? "" : email,
         pick(r, ["LineUserId", "lineUserId"]), pick(r, ["Phone", "phone"]), pick(r, ["AssignedVillage", "assignedVillage"]),
         pick(r, ["Status", "status"]) || "Active", providerId]
@@ -162,8 +162,8 @@ async function importMedicine(conn, rows) {
     const d = parseDate(pick(r, ["Date", "date"]));
     await conn.query(
       `INSERT INTO medicine_log (log_id, child_id, log_date, log_time, taken, vhv_id, notes) VALUES (?, ?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE child_id = VALUES(child_id), log_date = VALUES(log_date), log_time = VALUES(log_time),
-         taken = VALUES(taken), vhv_id = VALUES(vhv_id), notes = VALUES(notes)`,
+       ON CONFLICT (log_id) DO UPDATE SET child_id = EXCLUDED.child_id, log_date = EXCLUDED.log_date, log_time = EXCLUDED.log_time,
+         taken = EXCLUDED.taken, vhv_id = EXCLUDED.vhv_id, notes = EXCLUDED.notes`,
       [logId, childId, d ? d.date : pick(r, ["Date", "date"]), pick(r, ["Time", "time"]), pick(r, ["Taken", "taken"]),
         pick(r, ["VHV ID", "VhvId", "vhvId"]), pick(r, ["Notes", "notes"])]
     );
@@ -179,7 +179,7 @@ async function importActivity(conn, rows) {
     const raw = pick(r, ["Timestamp", "timestamp"]);
     const d = parseDate(raw);
     if (!d) undated++;
-    await conn.query("INSERT INTO activity_log (ts, user, action, details) VALUES (?, ?, ?, ?)",
+    await conn.query("INSERT INTO activity_log (ts, username, action, details) VALUES (?, ?, ?, ?)",
       [d ? d.sql : toSqlDateTime(new Date()), pick(r, ["User", "user"]) || "system", pick(r, ["Action", "action"]),
         pick(r, ["Details", "details"]) + (d || !raw ? "" : ` [เวลาเดิม: ${raw}]`)]);
     count++;

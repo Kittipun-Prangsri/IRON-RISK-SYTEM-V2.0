@@ -84,7 +84,7 @@ function userLabel(user) {
 
 async function logActivity(action, details, who, conn) {
   const run = conn ? (sql, params) => conn.query(sql, params) : query;
-  await run("INSERT INTO activity_log (ts, user, action, details) VALUES (?, ?, ?, ?)",
+  await run("INSERT INTO activity_log (ts, username, action, details) VALUES (?, ?, ?, ?)",
     [toSqlDateTime(new Date()), who || "system", action, details || ""]);
 }
 

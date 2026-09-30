@@ -100,7 +100,7 @@ const handlers = {
       const input = s || {};
       for (const key of SETTING_KEYS) {
         if (input[key] !== undefined) {
-          await query("INSERT INTO settings (k, v) VALUES (?, ?) ON DUPLICATE KEY UPDATE v = VALUES(v)", [key, String(input[key])]);
+          await query("INSERT INTO settings (k, v) VALUES (?, ?) ON CONFLICT (k) DO UPDATE SET v = EXCLUDED.v", [key, String(input[key])]);
         }
       }
       await users.logActivity("แก้ไขการตั้งค่าระบบ", "อัปเดตการตั้งค่าระบบ", users.userLabel(ctx.user));
@@ -134,9 +134,9 @@ const handlers = {
       await query(
         `INSERT INTO users (id, name, role, email, line_user_id, phone, assigned_village, status, provider_id, hosxp_login)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE name = VALUES(name), role = VALUES(role), email = VALUES(email),
-           line_user_id = VALUES(line_user_id), phone = VALUES(phone), assigned_village = VALUES(assigned_village),
-           status = VALUES(status), provider_id = VALUES(provider_id), hosxp_login = VALUES(hosxp_login)`,
+         ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, role = EXCLUDED.role, email = EXCLUDED.email,
+           line_user_id = EXCLUDED.line_user_id, phone = EXCLUDED.phone, assigned_village = EXCLUDED.assigned_village,
+           status = EXCLUDED.status, provider_id = EXCLUDED.provider_id, hosxp_login = EXCLUDED.hosxp_login`,
         [id, merged.name || "", merged.role || "", merged.email || "", merged.lineUserId || "", merged.phone || "",
           merged.assignedVillage || "", merged.status || "Active", merged.providerId || null, merged.hosxpLogin || null]
       );

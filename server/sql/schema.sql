@@ -1,11 +1,14 @@
--- Iron Zero Risk — application database (MySQL 8 / MariaDB 10.5+).
--- Keep this in its OWN database (e.g. `iron_risk`), never inside the HOSxP
--- database: HOSxP upgrades may drop or alter unknown tables.
--- Columns mirror the former Google Sheets ("ข้อมูลเด็ก", "Users",
--- "MedicineLog", "ActivityLog") so data migrates 1:1.
+-- Iron Zero Risk — application database (PostgreSQL / Supabase).
+-- Applied by `npm run db:init`, which replaces {{schema}} with DB_SCHEMA.
+-- Tables live in a dedicated schema, NOT "public": Supabase publishes "public"
+-- through its REST API (anon key), and this data is identifiable child health data.
+-- Timestamps are Asia/Bangkok wall-clock time (timestamp without time zone).
+
+CREATE SCHEMA IF NOT EXISTS {{schema}};
+SET search_path TO {{schema}};
 
 CREATE TABLE IF NOT EXISTS users (
-  id                VARCHAR(64)  NOT NULL PRIMARY KEY,
+  id                VARCHAR(64)  PRIMARY KEY,
   name              VARCHAR(255) NOT NULL DEFAULT '',
   role              VARCHAR(64)  NOT NULL DEFAULT 'รอการอนุมัติ',  -- เจ้าหน้าที่ รพ. | admin | อสม. | รอการอนุมัติ
   email             VARCHAR(255) NOT NULL DEFAULT '',
@@ -13,75 +16,104 @@ CREATE TABLE IF NOT EXISTS users (
   phone             VARCHAR(32)  NOT NULL DEFAULT '',
   assigned_village  VARCHAR(255) NOT NULL DEFAULT '',
   status            VARCHAR(16)  NOT NULL DEFAULT 'Pending',     -- Active | Pending | Inactive | Disabled
-  provider_id       VARCHAR(32)  NULL,                           -- MOPH Provider ID (13 chars)
-  hosxp_login       VARCHAR(64)  NULL,                           -- HOSxP opduser.loginname
-  created_at        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY uq_users_provider_id (provider_id),
-  UNIQUE KEY uq_users_hosxp_login (hosxp_login),
-  KEY idx_users_line_user_id (line_user_id),
-  KEY idx_users_email (email)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  provider_id       VARCHAR(32)  UNIQUE,                         -- MOPH Provider ID
+  hosxp_login       VARCHAR(64)  UNIQUE,                         -- HOSxP opduser.loginname
+  created_at        TIMESTAMP    NOT NULL DEFAULT (now() AT TIME ZONE 'Asia/Bangkok'),
+  updated_at        TIMESTAMP    NOT NULL DEFAULT (now() AT TIME ZONE 'Asia/Bangkok')
+);
+CREATE INDEX IF NOT EXISTS idx_users_line_user_id ON users (line_user_id);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users (email);
 
 CREATE TABLE IF NOT EXISTS children (
-  id               VARCHAR(64)   NOT NULL PRIMARY KEY,
-  name             VARCHAR(255)  NOT NULL DEFAULT '',
-  age              VARCHAR(32)   NOT NULL DEFAULT '',
-  house            VARCHAR(64)   NOT NULL DEFAULT '',
-  moo              VARCHAR(16)   NOT NULL DEFAULT '',
-  village          VARCHAR(255)  NOT NULL DEFAULT '',
-  tambon           VARCHAR(128)  NOT NULL DEFAULT 'คลองหาด',
-  amphoe           VARCHAR(128)  NOT NULL DEFAULT 'คลองหาด',
-  province         VARCHAR(128)  NOT NULL DEFAULT 'สระแก้ว',
-  lat              DOUBLE        NULL,
-  lng              DOUBLE        NULL,
-  hct              DECIMAL(5,2)  NULL,
-  weight           DECIMAL(6,2)  NULL,
-  height           DECIMAL(6,2)  NULL,
-  nutrition        VARCHAR(64)   NOT NULL DEFAULT '',
-  iron             VARCHAR(64)   NOT NULL DEFAULT '',
-  food             VARCHAR(64)   NOT NULL DEFAULT '',
-  social           VARCHAR(64)   NOT NULL DEFAULT '',
-  guardian         VARCHAR(255)  NOT NULL DEFAULT '',
-  score_hct        TINYINT       NOT NULL DEFAULT 0,
-  score_nutrition  TINYINT       NOT NULL DEFAULT 0,
-  score_iron       TINYINT       NOT NULL DEFAULT 0,
-  score_food       TINYINT       NOT NULL DEFAULT 0,
-  score_social     TINYINT       NOT NULL DEFAULT 0,
-  total_score      TINYINT       NOT NULL DEFAULT 0,
-  status           VARCHAR(32)   NOT NULL DEFAULT 'เสี่ยงต่ำ',     -- เสี่ยงต่ำ | เสี่ยงปานกลาง | เสี่ยงสูง
-  last_date        VARCHAR(32)   NOT NULL DEFAULT '-',            -- yyyy-MM-dd, or '-' (kept as text like the sheet)
-  notes            TEXT          NULL,
-  active           TINYINT(1)    NOT NULL DEFAULT 1,
-  created_at       DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at       DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  KEY idx_children_village (village),
-  KEY idx_children_active (active)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  id               VARCHAR(64)      PRIMARY KEY,
+  name             VARCHAR(255)     NOT NULL DEFAULT '',
+  age              VARCHAR(32)      NOT NULL DEFAULT '',
+  house            VARCHAR(64)      NOT NULL DEFAULT '',
+  moo              VARCHAR(16)      NOT NULL DEFAULT '',
+  village          VARCHAR(255)     NOT NULL DEFAULT '',
+  tambon           VARCHAR(128)     NOT NULL DEFAULT 'คลองหาด',
+  amphoe           VARCHAR(128)     NOT NULL DEFAULT 'คลองหาด',
+  province         VARCHAR(128)     NOT NULL DEFAULT 'สระแก้ว',
+  lat              DOUBLE PRECISION,
+  lng              DOUBLE PRECISION,
+  hct              NUMERIC(5,2),
+  weight           NUMERIC(6,2),
+  height           NUMERIC(6,2),
+  nutrition        VARCHAR(64)      NOT NULL DEFAULT '',
+  iron             VARCHAR(64)      NOT NULL DEFAULT '',
+  food             VARCHAR(64)      NOT NULL DEFAULT '',
+  social           VARCHAR(64)      NOT NULL DEFAULT '',
+  guardian         VARCHAR(255)     NOT NULL DEFAULT '',
+  score_hct        SMALLINT         NOT NULL DEFAULT 0,
+  score_nutrition  SMALLINT         NOT NULL DEFAULT 0,
+  score_iron       SMALLINT         NOT NULL DEFAULT 0,
+  score_food       SMALLINT         NOT NULL DEFAULT 0,
+  score_social     SMALLINT         NOT NULL DEFAULT 0,
+  total_score      SMALLINT         NOT NULL DEFAULT 0,
+  status           VARCHAR(32)      NOT NULL DEFAULT 'เสี่ยงต่ำ',     -- เสี่ยงต่ำ | เสี่ยงปานกลาง | เสี่ยงสูง
+  last_date        VARCHAR(32)      NOT NULL DEFAULT '-',            -- yyyy-MM-dd or '-' (text, like the sheet)
+  notes            TEXT,
+  active           SMALLINT         NOT NULL DEFAULT 1,
+  created_at       TIMESTAMP        NOT NULL DEFAULT (now() AT TIME ZONE 'Asia/Bangkok'),
+  updated_at       TIMESTAMP        NOT NULL DEFAULT (now() AT TIME ZONE 'Asia/Bangkok')
+);
+CREATE INDEX IF NOT EXISTS idx_children_village ON children (village);
+CREATE INDEX IF NOT EXISTS idx_children_active ON children (active);
 
 CREATE TABLE IF NOT EXISTS medicine_log (
-  log_id      VARCHAR(64)  NOT NULL PRIMARY KEY,
-  child_id    VARCHAR(64)  NOT NULL,
-  log_date    VARCHAR(16)  NOT NULL DEFAULT '',   -- yyyy-MM-dd
-  log_time    VARCHAR(8)   NOT NULL DEFAULT '',   -- HH:mm
-  taken       VARCHAR(64)  NOT NULL DEFAULT '',
-  vhv_id      VARCHAR(64)  NOT NULL DEFAULT '',
-  notes       TEXT         NULL,
-  created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  KEY idx_medicine_child (child_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  log_id      VARCHAR(64) PRIMARY KEY,
+  child_id    VARCHAR(64) NOT NULL,
+  log_date    VARCHAR(16) NOT NULL DEFAULT '',   -- yyyy-MM-dd
+  log_time    VARCHAR(8)  NOT NULL DEFAULT '',   -- HH:mm
+  taken       VARCHAR(64) NOT NULL DEFAULT '',
+  vhv_id      VARCHAR(64) NOT NULL DEFAULT '',
+  notes       TEXT,
+  created_at  TIMESTAMP   NOT NULL DEFAULT (now() AT TIME ZONE 'Asia/Bangkok')
+);
+CREATE INDEX IF NOT EXISTS idx_medicine_child ON medicine_log (child_id);
 
 CREATE TABLE IF NOT EXISTS activity_log (
-  id        BIGINT       NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  ts        DATETIME     NOT NULL,                -- Asia/Bangkok local time
-  user      VARCHAR(255) NOT NULL DEFAULT 'system',
+  id        BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  ts        TIMESTAMP    NOT NULL,
+  username  VARCHAR(255) NOT NULL DEFAULT 'system',
   action    VARCHAR(128) NOT NULL DEFAULT '',
-  details   TEXT         NULL,
-  KEY idx_activity_ts (ts)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  details   TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_activity_ts ON activity_log (ts);
 
 -- Non-secret settings editable from the Settings page (secrets live in .env only).
 CREATE TABLE IF NOT EXISTS settings (
-  k  VARCHAR(64) NOT NULL PRIMARY KEY,
-  v  TEXT        NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  k  VARCHAR(64) PRIMARY KEY,
+  v  TEXT
+);
+
+-- updated_at maintenance (MySQL's ON UPDATE CURRENT_TIMESTAMP equivalent).
+CREATE OR REPLACE FUNCTION {{schema}}.set_updated_at() RETURNS trigger AS $$
+BEGIN
+  NEW.updated_at := now() AT TIME ZONE 'Asia/Bangkok';
+  RETURN NEW;
+END
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_users_updated_at ON users;
+CREATE TRIGGER trg_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION {{schema}}.set_updated_at();
+DROP TRIGGER IF EXISTS trg_children_updated_at ON children;
+CREATE TRIGGER trg_children_updated_at BEFORE UPDATE ON children FOR EACH ROW EXECUTE FUNCTION {{schema}}.set_updated_at();
+
+-- Defence in depth on Supabase: row-level security with no policies, so the
+-- anon / authenticated API roles can read nothing even if this schema is ever
+-- exposed. The server connects as the table owner, which RLS does not restrict.
+ALTER TABLE users        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE children     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE medicine_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE activity_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE settings     ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+    EXECUTE 'REVOKE ALL ON SCHEMA {{schema}} FROM anon, authenticated';
+    EXECUTE 'REVOKE ALL ON ALL TABLES IN SCHEMA {{schema}} FROM anon, authenticated';
+  END IF;
+END
+$$;

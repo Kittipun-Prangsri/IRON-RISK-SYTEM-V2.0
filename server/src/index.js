@@ -1,10 +1,10 @@
 const { config, assertConfig } = require("./config");
 const { createApp } = require("./app");
-const { getPool } = require("./db");
+const { query } = require("./db");
 
 async function main() {
   assertConfig();
-  await getPool().query("SELECT 1"); // fail fast if the database is unreachable
+  await query("SELECT 1 FROM users LIMIT 1"); // fail fast: DB unreachable or schema not initialised (npm run db:init)
   const app = createApp();
   app.listen(config.port, () => {
     console.log(`Iron Zero Risk server listening on :${config.port} (${config.publicBaseUrl})`);
