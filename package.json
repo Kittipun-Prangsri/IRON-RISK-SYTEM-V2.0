@@ -4,10 +4,7 @@
   "description": "Iron Zero Risk System V2.0",
   "private": true,
   "scripts": {
-    "build": "node scripts/build.js",
-    "dev": "npm run serve",
-    "serve": "npm run build && firebase emulators:start",
-    "deploy": "npm run build && firebase deploy --only hosting:ironrisk"
+    "start": "node server/src/index.js"
   },
   "dependencies": {
     "csv-parse": "^7.0.3",
