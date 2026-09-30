@@ -62,26 +62,35 @@ async function sendLineNotifyAlert(token, name, village, hct, score) {
 // `matchField` (an unlinked profile pre-registered by staff, or a prior LINE/SSO
 // login under a different doc id), or auto-provisions a new Pending profile —
 // mirrors Code.gs's verifyUserLogin()/autoRegisterLineUser() lookup-then-register chain.
+function cleanMophName(nameStr) {
+  if (!nameStr) return "";
+  let s = String(nameStr).trim();
+  s = s.replace(/^(อื่นๆ|ไม่ระบุ)\s*/gi, "").trim();
+  return s;
+}
+
 async function linkOrCreateProfile(uid, matchField, matchValue, defaults) {
   const directRef = db.collection("users").doc(uid);
   const directSnap = await directRef.get();
 
   const targetStatus = defaults.status || "Pending";
   const targetRole = defaults.role || "รอการอนุมัติ";
+  const cleanName = cleanMophName(defaults.name) || "ผู้ใช้ใหม่";
+  const avatarUrl = defaults.avatarUrl || "assets/images/moph-avatar.png";
 
   if (directSnap.exists) {
     const data = directSnap.data();
-    if (targetStatus === "Active" && (data.status === "Pending" || !data.status)) {
-      const updated = {
-        ...data,
-        status: "Active",
-        role: (data.role && data.role !== "รอการอนุมัติ") ? data.role : targetRole,
-        updatedAt: FieldValue.serverTimestamp()
-      };
-      await directRef.set(updated, { merge: true });
-      return { id: uid, ...updated };
-    }
-    return { id: uid, ...data };
+    const existingCleanName = cleanMophName(data.name) || cleanName;
+    const updated = {
+      ...data,
+      name: existingCleanName,
+      status: (targetStatus === "Active" && (data.status === "Pending" || !data.status)) ? "Active" : (data.status || targetStatus),
+      role: (data.role && data.role !== "รอการอนุมัติ") ? data.role : targetRole,
+      avatarUrl: data.avatarUrl || avatarUrl,
+      updatedAt: FieldValue.serverTimestamp()
+    };
+    await directRef.set(updated, { merge: true });
+    return { id: uid, ...updated };
   }
 
   let matchSnap = null;
@@ -92,22 +101,32 @@ async function linkOrCreateProfile(uid, matchField, matchValue, defaults) {
 
   if (matchSnap) {
     const data = matchSnap.data();
+    const existingCleanName = cleanMophName(data.name) || cleanName;
     const newStatus = targetStatus === "Active" ? "Active" : (data.status || "Pending");
     const newRole = (data.role && data.role !== "รอการอนุมัติ") ? data.role : targetRole;
-    const merged = { ...data, status: newStatus, role: newRole, authUid: uid, linkedAt: FieldValue.serverTimestamp() };
+    const merged = {
+      ...data,
+      name: existingCleanName,
+      status: newStatus,
+      role: newRole,
+      avatarUrl: data.avatarUrl || avatarUrl,
+      authUid: uid,
+      linkedAt: FieldValue.serverTimestamp()
+    };
     await directRef.set(merged, { merge: true });
     if (matchSnap.id !== uid) await matchSnap.ref.delete();
     return { id: uid, ...merged };
   }
 
   const created = {
-    name: defaults.name || "ผู้ใช้ใหม่",
+    name: cleanName,
     role: targetRole,
     email: defaults.email || "",
     lineUserId: defaults.lineUserId || "",
     phone: defaults.phone || "",
     providerId: defaults.providerId || "",
     cid: defaults.cid || "",
+    avatarUrl: avatarUrl,
     assignedVillage: "",
     status: targetStatus,
     authUid: uid,
@@ -403,18 +422,23 @@ exports.exchangeHealthIdLogin = onCall(async (request) => {
     : await fetchHealthIdDirectProfile(code, request.data.redirectUri);
 
   const cid = healthUser.cid || healthUser.pid || healthUser.health_id || healthUser.id || healthUser.national_id || healthUser.sub || "";
-  const title = healthUser.title_th || healthUser.title || healthUser.prefix || "";
+  let title = healthUser.title_th || healthUser.title || healthUser.prefix || "";
+  if (title === "อื่นๆ" || title === "ไม่ระบุ") title = "";
   const firstName = healthUser.firstname_th || healthUser.first_name_th || healthUser.first_name || healthUser.firstname || "";
   const lastName = healthUser.lastname_th || healthUser.last_name_th || healthUser.last_name || healthUser.lastname || "";
-  const fullName = healthUser.name_th || healthUser.name || [title, firstName, lastName].filter(Boolean).join(" ").trim();
+  let fullName = healthUser.name_th || healthUser.name || [title, firstName, lastName].filter(Boolean).join(" ").trim();
+  fullName = cleanMophName(fullName);
 
   const uid = `healthid_${cid}`;
+  const avatarUrl = healthUser.picture || healthUser.image_url || healthUser.avatar || "assets/images/moph-avatar.png";
+
   const userProfile = await linkOrCreateProfile(uid, "cid", cid, {
     name: fullName || "ผู้ใช้งาน Health ID",
     email: healthUser.email || "",
     phone: healthUser.mobile || healthUser.telephone || healthUser.phone || "",
     cid: cid,
     role: "เจ้าหน้าที่",
+    avatarUrl: avatarUrl,
     status: "Active"
   });
 
@@ -447,17 +471,22 @@ exports.exchangeProviderIdLogin = onCall(async (request) => {
     ? MOCK_PROVIDER_PROFILE
     : await fetchProviderIdProfile(code, request.data.redirectUri);
 
-  const title = provider.special_title_th || provider.title_th || "";
-  const fullName = [title, provider.name_th || [provider.firstname_th, provider.lastname_th].filter(Boolean).join(" ")]
-    .filter(Boolean).join(" ").trim();
+  let title = provider.special_title_th || provider.title_th || "";
+  if (title === "อื่นๆ" || title === "ไม่ระบุ") title = "";
+  let rawName = provider.name_th || [provider.firstname_th, provider.lastname_th].filter(Boolean).join(" ");
+  let fullName = [title, cleanMophName(rawName)].filter(Boolean).join(" ").trim() || provider.name_eng || "ผู้ใช้งาน Provider ID";
+  fullName = cleanMophName(fullName);
+
   const orgs = Array.isArray(provider.organization) ? provider.organization : [];
   const org = orgs[0] || {};
+  const avatarUrl = provider.picture || provider.image_url || provider.avatar || "assets/images/moph-avatar.png";
 
   const uid = `providerid_${provider.provider_id}`;
   const userProfile = await linkOrCreateProfile(uid, "providerId", provider.provider_id, {
-    name: fullName || provider.name_eng,
+    name: fullName,
     providerId: provider.provider_id,
     role: org.position || "เจ้าหน้าที่",
+    avatarUrl: avatarUrl,
     status: "Active"
   });
 
