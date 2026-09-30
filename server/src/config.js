@@ -29,13 +29,13 @@ const config = {
   // Local development only: allows the "dev quick login" panel / mock SSO buttons.
   devLogin: bool(env.DEV_LOGIN, false),
 
-  // Application database: PostgreSQL / Supabase. DATABASE_URL is the whole
-  // connection string copied from Supabase (Connect → Session pooler).
   db: {
     url: env.DATABASE_URL || "",
-    schema: env.DB_SCHEMA || "iron_risk",
-    ssl: bool(env.DB_SSL, !/@(localhost|127\.0\.0\.1)[:/]/.test(env.DATABASE_URL || "")),
-    sslCaFile: env.DB_SSL_CA || ""
+    host: env.DB_HOST || "127.0.0.1",
+    port: Number(env.DB_PORT || 3306),
+    user: env.DB_USER || "iron_risk",
+    password: env.DB_PASSWORD || "",
+    database: env.DB_NAME || "iron_risk"
   },
 
   // Read-only connection to the HOSxP database (optional).
@@ -75,8 +75,8 @@ function assertConfig() {
   if (!config.sessionSecret || config.sessionSecret.length < 32) {
     throw new Error("SESSION_SECRET must be set to a random string of at least 32 characters (see .env.example)");
   }
-  if (!config.db.url) {
-    throw new Error("DATABASE_URL must be set (Supabase → Connect → Session pooler connection string)");
+  if (!config.db.url && !config.db.host) {
+    throw new Error("DATABASE_URL or DB_HOST must be set");
   }
 }
 

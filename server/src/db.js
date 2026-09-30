@@ -1,85 +1,58 @@
-// PostgreSQL (Supabase) access. SQL in this codebase uses "?" placeholders;
-// they are rewritten to $1..$n here. All tables live in their own schema
-// (DB_SCHEMA, default "iron_risk") — deliberately NOT "public", which Supabase
-// exposes through its REST API.
-const fs = require("fs");
-const { Pool, types } = require("pg");
+const mysql = require("mysql2/promise");
 const { config } = require("./config");
-
-// timestamp (without time zone) → "yyyy-MM-dd HH:mm:ss" string, no JS Date / TZ shifting.
-types.setTypeParser(1114, (v) => (v === null ? null : v.replace("T", " ").slice(0, 19)));
-// bigint (COUNT(*), identity ids) and numeric → JS numbers.
-types.setTypeParser(20, (v) => (v === null ? null : Number(v)));
-types.setTypeParser(1700, (v) => (v === null ? null : Number(v)));
 
 let pool = null;
 
-function toPg(sql) {
-  let n = 0;
-  return sql.replace(/\?/g, () => `$${++n}`);
-}
-
-function sslOptions() {
-  if (!config.db.ssl) return false;
-  // With Supabase's CA certificate (Dashboard → Database → SSL) the server is verified;
-  // without it the link is still encrypted but the certificate isn't checked.
-  if (config.db.sslCaFile) return { ca: fs.readFileSync(config.db.sslCaFile, "utf8"), rejectUnauthorized: true };
-  return { rejectUnauthorized: false };
-}
-
 function getPool() {
   if (!pool) {
-    if (!config.db.url) throw new Error("DATABASE_URL is not set (Supabase → Connect → Session pooler connection string)");
-    pool = new Pool({
-      connectionString: config.db.url,
-      ssl: sslOptions(),
-      max: 10,
-      // Fail with a clear error instead of hanging forever when the DB host is unreachable.
-      connectionTimeoutMillis: 15000
+    pool = mysql.createPool(config.db.url || {
+      host: config.db.host,
+      port: config.db.port,
+      user: config.db.user,
+      password: config.db.password,
+      database: config.db.database,
+      waitForConnections: true,
+      connectionLimit: 10,
+      queueLimit: 0
     });
-    // A dropped idle connection must not crash the process; the pool reconnects.
-    pool.on("error", (err) => console.error("[db] idle connection error:", err.message));
+    
+    // Test connection immediately
+    pool.getConnection().then(conn => {
+      conn.release();
+    }).catch(err => {
+      console.error("[db] Error connecting to MySQL:", err.message);
+    });
   }
   return pool;
 }
 
-// Checks out a connection whose search_path is the app schema. Set once per
-// physical connection, before its first use. Requires a session-level connection
-// (Supabase *Session* pooler, port 5432) — not the transaction-mode pooler.
 async function checkout() {
-  const client = await getPool().connect();
-  if (!client.ironRiskSchemaSet) {
-    try {
-      await client.query(`SET search_path TO ${config.db.schema}`);
-      client.ironRiskSchemaSet = true;
-    } catch (err) {
-      client.release(err);
-      throw err;
-    }
-  }
+  const client = await getPool().getConnection();
   return client;
 }
 
 async function query(sql, params) {
-  const client = await checkout();
-  try {
-    return (await client.query(toPg(sql), params)).rows;
-  } finally {
-    client.release();
-  }
+  const [rows] = await getPool().execute(sql, params);
+  return rows;
 }
 
 // Runs fn(conn) in a transaction; conn.query(sql, params) returns rows.
 async function transaction(fn) {
   const client = await checkout();
-  const conn = { query: async (sql, params) => (await client.query(toPg(sql), params)).rows };
+  const conn = { 
+    query: async (sql, params) => {
+      const [rows] = await client.execute(sql, params);
+      return rows;
+    }
+  };
+  
   try {
-    await client.query("BEGIN");
+    await client.beginTransaction();
     const result = await fn(conn);
-    await client.query("COMMIT");
+    await client.commit();
     return result;
   } catch (err) {
-    await client.query("ROLLBACK").catch(() => {});
+    await client.rollback().catch(() => {});
     throw err;
   } finally {
     client.release();
@@ -91,6 +64,11 @@ async function close() {
     await pool.end();
     pool = null;
   }
+}
+
+// Keep toPg as an identity function in case other modules import it
+function toPg(sql) {
+  return sql;
 }
 
 module.exports = { getPool, query, transaction, close, toPg, checkout };
