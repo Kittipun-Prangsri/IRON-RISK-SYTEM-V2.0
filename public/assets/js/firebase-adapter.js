@@ -42,7 +42,9 @@ const PAYLOAD_BUILDERS = {
   getSystemSettings: () => undefined,
   getPublicSettings: () => undefined,
   testLineNotify: () => undefined,
-  ensureUserProfile: () => undefined
+  ensureUserProfile: () => undefined,
+  exchangeHealthIdLogin: (args) => args[0],
+  exchangeProviderIdLogin: (args) => args[0]
 };
 
 function buildPayload(name, args) {
@@ -83,6 +85,7 @@ onAuthStateChanged(auth, (user) => {
 // prefix tells its callback apart from LINE's, and the stored value guards
 // against a forged callback (CSRF).
 const PROVIDER_ID_STATE_PREFIX = "providerid_";
+const HEALTH_ID_STATE_PREFIX = "healthid_";
 // Default Redirect URI path registered with Health ID; the SPA is served here
 // too (Hosting rewrites ** → index.html), and returns to "/" after handling.
 const PROVIDER_ID_CALLBACK_PATH = "/auth/healthid/callback";
@@ -105,6 +108,13 @@ function mockProviderIdCallbackUrl() {
   sessionSet("providerIdState", state);
   sessionSet("providerIdRedirectUri", window.location.origin + PROVIDER_ID_CALLBACK_PATH);
   return PROVIDER_ID_CALLBACK_PATH + "?code=mock-providerid&state=" + encodeURIComponent(state);
+}
+
+function mockHealthIdCallbackUrl() {
+  const state = HEALTH_ID_STATE_PREFIX + "mock_" + Date.now();
+  sessionSet("healthIdState", state);
+  sessionSet("healthIdRedirectUri", window.location.origin + PROVIDER_ID_CALLBACK_PATH);
+  return PROVIDER_ID_CALLBACK_PATH + "?code=mock-healthid&state=" + encodeURIComponent(state);
 }
 
 function callEnsureProfile() {
@@ -149,8 +159,11 @@ window.fb = {
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
     if (!code) return Promise.resolve({ handled: false });
-    // A Provider ID callback also carries ?code= — leave it to handleProviderIdRedirect.
-    if ((params.get("state") || "").indexOf(PROVIDER_ID_STATE_PREFIX) === 0) return Promise.resolve({ handled: false });
+    // A Provider ID or Health ID callback also carries ?code= — leave it to their handlers.
+    const state = params.get("state") || "";
+    if (state.indexOf(PROVIDER_ID_STATE_PREFIX) === 0 || state.indexOf(HEALTH_ID_STATE_PREFIX) === 0) {
+      return Promise.resolve({ handled: false });
+    }
 
     if (window.history && window.history.replaceState) {
       window.history.replaceState({}, document.title, window.location.pathname);
@@ -166,9 +179,55 @@ window.fb = {
   },
 
   // {HealthID-URL}/oauth/redirect?client_id=&redirect_uri=&response_type=code
-  // Uses window.PROVIDER_ID_CONFIG (firebase-config.js) directly when it has a
-  // client_id, so the button works before anyone can log in to the Settings page;
-  // otherwise falls back to the values saved on the Settings page.
+  getHealthIdLoginUrl() {
+    const config = window.PROVIDER_ID_CONFIG || {};
+    const settingsPromise = config.healthIdClientId
+      ? Promise.resolve({ healthIdClientId: config.healthIdClientId, providerIdEnv: config.env, providerIdRedirectUri: config.redirectUri })
+      : httpsCallable(functions, "getPublicSettings")().then((res) => res.data || {});
+    return settingsPromise.then((settings) => {
+      if (!settings.healthIdClientId && IS_LOCALHOST) return mockHealthIdCallbackUrl();
+      if (!settings.healthIdClientId) throw new Error("กรุณาตั้งค่า Health ID Client ID (public/firebase-config.js หรือหน้าตั้งค่าระบบ) ก่อนใช้งาน");
+      const baseUrl = PROVIDER_ID_HEALTH_URLS[settings.providerIdEnv] || PROVIDER_ID_HEALTH_URLS.prd;
+      const redirectUri = settings.providerIdRedirectUri || (window.location.origin + PROVIDER_ID_CALLBACK_PATH);
+      const random = window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : String(Math.random()).slice(2);
+      const state = HEALTH_ID_STATE_PREFIX + random;
+      sessionSet("healthIdState", state);
+      sessionSet("healthIdRedirectUri", redirectUri);
+      return baseUrl + "/oauth/redirect?client_id=" + encodeURIComponent(settings.healthIdClientId) +
+        "&redirect_uri=" + encodeURIComponent(redirectUri) + "&response_type=code&state=" + encodeURIComponent(state);
+    });
+  },
+
+  // Detects a Health ID callback (?code=&state=healthid_...), exchanges it
+  // server-side for a Health ID profile + custom token, and signs in.
+  handleHealthIdRedirect() {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
+    const state = params.get("state") || "";
+    if (!code || state.indexOf(HEALTH_ID_STATE_PREFIX) !== 0) return Promise.resolve({ handled: false });
+
+    const redirectUri = sessionGet("healthIdRedirectUri") || (window.location.origin + window.location.pathname);
+    if (window.history && window.history.replaceState) {
+      window.history.replaceState({}, document.title, "/");
+    }
+
+    const expectedState = sessionGet("healthIdState");
+    sessionRemove("healthIdState");
+    sessionRemove("healthIdRedirectUri");
+    if (!expectedState || expectedState !== state) {
+      return Promise.resolve({ handled: true, success: false, error: "การเข้าสู่ระบบด้วย Health ID ไม่ถูกต้อง (state ไม่ตรงกัน) กรุณาลองใหม่" });
+    }
+
+    return httpsCallable(functions, "exchangeHealthIdLogin")({ code, redirectUri })
+      .then((res) => {
+        const data = res.data || {};
+        if (data.pending) return { handled: true, pending: true, user: data.user };
+        return signInWithCustomToken(auth, data.customToken).then(() => ({ handled: true, success: true, user: data.user }));
+      })
+      .catch((err) => ({ handled: true, success: false, error: err && err.message ? err.message : String(err) }));
+  },
+
+  // {HealthID-URL}/oauth/redirect?client_id=&redirect_uri=&response_type=code
   getProviderIdLoginUrl() {
     const config = window.PROVIDER_ID_CONFIG || {};
     const settingsPromise = config.healthIdClientId

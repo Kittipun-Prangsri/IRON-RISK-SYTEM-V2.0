@@ -167,12 +167,16 @@ window.triggerDevLogin = function() {
 };
 
 window.handleSSOLogin = function(provider) {
+  if (provider === 'healthid') {
+    window.handleHealthIdLogin();
+    return;
+  }
   if (provider === 'providerid') {
     window.handleProviderIdLogin();
     return;
   }
   if (provider !== 'google') {
-    window.showToast("ผู้ให้บริการนี้ยังไม่เปิดใช้งาน กรุณาใช้ Google หรือ LINE", "info");
+    window.showToast("ผู้ให้บริการนี้ยังไม่เปิดใช้งาน กรุณาใช้ Google, Health ID หรือ LINE", "info");
     return;
   }
   window.showLoading(true, "กำลังเชื่อมต่อกับ Google SSO...");
@@ -2019,6 +2023,16 @@ window.handleLineLogin = function() {
   });
 };
 
+window.handleHealthIdLogin = function() {
+  window.showLoading(true, "กำลังเชื่อมต่อกับ Health ID (MOPH)...");
+  window.fb.getHealthIdLoginUrl().then(function(url) {
+    window.top.location.href = url;
+  }).catch(function(err) {
+    window.showLoading(false);
+    window.showToast("ไม่สามารถเตรียม Health ID Login ได้: " + (err && err.message ? err.message : err), "error");
+  });
+};
+
 window.handleProviderIdLogin = function() {
   window.showLoading(true, "กำลังเชื่อมต่อกับ Provider ID (MOPH)...");
   window.fb.getProviderIdLoginUrl().then(function(url) {
@@ -2128,8 +2142,12 @@ window.initAuthSession = function() {
 
   // 1. Resolve an OAuth redirect (?code=...) if we just came back from Health ID
   //    (Provider ID login) or LINE's authorize page.
-  var redirectLabel = "Provider ID";
-  window.fb.handleProviderIdRedirect().then(function(providerResult) {
+  var redirectLabel = "Health ID";
+  window.fb.handleHealthIdRedirect().then(function(healthResult) {
+    if (healthResult && healthResult.handled) return healthResult;
+    redirectLabel = "Provider ID";
+    return window.fb.handleProviderIdRedirect();
+  }).then(function(providerResult) {
     if (providerResult && providerResult.handled) return providerResult;
     redirectLabel = "LINE";
     return window.fb.handleLineRedirect();

@@ -11,10 +11,9 @@ const db = admin.firestore();
 const { scoreChild } = require("./lib/scoring");
 const { requireAuth, requireProfile, requireStaff, isVhv } = require("./lib/auth");
 
-const LINE_TOKEN = defineSecret("LINE_TOKEN");
-const LINE_CLIENT_SECRET = defineSecret("LINE_CLIENT_SECRET");
-const HEALTHID_CLIENT_SECRET = defineSecret("HEALTHID_CLIENT_SECRET");
-const PROVIDERID_SECRET_KEY = defineSecret("PROVIDERID_SECRET_KEY");
+function getSecret(name) {
+  return process.env[name] || "";
+}
 
 // Health ID (OAuth) + Provider ID base URLs per environment — from
 // "คู่มือการเชื่อมต่อระบบ Provider ID ด้วย OAuth ของ Health ID" (1 ก.ค. 2567).
@@ -66,7 +65,24 @@ async function sendLineNotifyAlert(token, name, village, hct, score) {
 async function linkOrCreateProfile(uid, matchField, matchValue, defaults) {
   const directRef = db.collection("users").doc(uid);
   const directSnap = await directRef.get();
-  if (directSnap.exists) return { id: uid, ...directSnap.data() };
+
+  const targetStatus = defaults.status || "Pending";
+  const targetRole = defaults.role || "รอการอนุมัติ";
+
+  if (directSnap.exists) {
+    const data = directSnap.data();
+    if (targetStatus === "Active" && (data.status === "Pending" || !data.status)) {
+      const updated = {
+        ...data,
+        status: "Active",
+        role: (data.role && data.role !== "รอการอนุมัติ") ? data.role : targetRole,
+        updatedAt: FieldValue.serverTimestamp()
+      };
+      await directRef.set(updated, { merge: true });
+      return { id: uid, ...updated };
+    }
+    return { id: uid, ...data };
+  }
 
   let matchSnap = null;
   if (matchField && matchValue) {
@@ -75,7 +91,10 @@ async function linkOrCreateProfile(uid, matchField, matchValue, defaults) {
   }
 
   if (matchSnap) {
-    const merged = { ...matchSnap.data(), authUid: uid, linkedAt: FieldValue.serverTimestamp() };
+    const data = matchSnap.data();
+    const newStatus = targetStatus === "Active" ? "Active" : (data.status || "Pending");
+    const newRole = (data.role && data.role !== "รอการอนุมัติ") ? data.role : targetRole;
+    const merged = { ...data, status: newStatus, role: newRole, authUid: uid, linkedAt: FieldValue.serverTimestamp() };
     await directRef.set(merged, { merge: true });
     if (matchSnap.id !== uid) await matchSnap.ref.delete();
     return { id: uid, ...merged };
@@ -83,18 +102,19 @@ async function linkOrCreateProfile(uid, matchField, matchValue, defaults) {
 
   const created = {
     name: defaults.name || "ผู้ใช้ใหม่",
-    role: "รอการอนุมัติ",
+    role: targetRole,
     email: defaults.email || "",
     lineUserId: defaults.lineUserId || "",
     phone: defaults.phone || "",
     providerId: defaults.providerId || "",
+    cid: defaults.cid || "",
     assignedVillage: "",
-    status: "Pending",
+    status: targetStatus,
     authUid: uid,
     createdAt: FieldValue.serverTimestamp()
   };
   await directRef.set(created);
-  await logActivity("ลงทะเบียน", `Auto-register ผู้ใช้ใหม่รอการอนุมัติ: ${created.name}`, defaults.email || defaults.lineUserId || defaults.providerId || uid);
+  await logActivity("ลงทะเบียน", `Auto-register ผู้ใช้ใหม่ (${created.status}): ${created.name}`, defaults.email || defaults.lineUserId || defaults.providerId || defaults.cid || uid);
   return { id: uid, ...created };
 }
 
@@ -147,7 +167,7 @@ exports.signInPhoneOtp = onCall(async (request) => {
 });
 
 // ── AUTH: LINE LOGIN CODE EXCHANGE (public — this call establishes auth) ────
-exports.exchangeLineLogin = onCall({ secrets: [LINE_CLIENT_SECRET] }, async (request) => {
+exports.exchangeLineLogin = onCall(async (request) => {
   const code = request.data && request.data.code;
   if (!code) throw new HttpsError("invalid-argument", "ไม่พบ authorization code");
 
@@ -155,7 +175,7 @@ exports.exchangeLineLogin = onCall({ secrets: [LINE_CLIENT_SECRET] }, async (req
   const settings = settingsSnap.exists ? settingsSnap.data() : {};
   const clientId = settings.lineClientId || "";
   const redirectUri = settings.lineRedirectUri || "";
-  const clientSecret = LINE_CLIENT_SECRET.value();
+  const clientSecret = getSecret("LINE_CLIENT_SECRET");
 
   if (!clientId || !clientSecret) {
     throw new HttpsError("failed-precondition", "ยังไม่ได้ตั้งค่า LINE Client ID/Secret ในระบบ");
@@ -226,8 +246,8 @@ async function fetchProviderIdProfile(code, redirectUri) {
   const providerClientId = settings.providerIdClientId || process.env.PROVIDERID_CLIENT_ID || "";
   // Health ID requires the exact redirect_uri used on the authorize request.
   redirectUri = redirectUri || settings.providerIdRedirectUri || "";
-  const healthIdSecret = HEALTHID_CLIENT_SECRET.value();
-  const providerSecret = PROVIDERID_SECRET_KEY.value();
+  const healthIdSecret = getSecret("HEALTHID_CLIENT_SECRET");
+  const providerSecret = getSecret("PROVIDERID_SECRET_KEY");
 
   if (!healthIdClientId || !healthIdSecret || !providerClientId || !providerSecret) {
     throw new HttpsError("failed-precondition", "ยังไม่ได้ตั้งค่า Health ID / Provider ID Client ID หรือ Secret ในระบบ");
@@ -302,7 +322,123 @@ const MOCK_PROVIDER_PROFILE = {
   organization: [{ position: "แพทย์", hcode: "10999", hname_th: "โรงพยาบาลทดสอบ (Mock)" }]
 };
 
-exports.exchangeProviderIdLogin = onCall({ secrets: [HEALTHID_CLIENT_SECRET, PROVIDERID_SECRET_KEY] }, async (request) => {
+// ── AUTH: DIRECT HEALTH ID CODE EXCHANGE ────────────────────────────────
+const MOCK_HEALTHID_CODE = "mock-healthid";
+const MOCK_HEALTHID_PROFILE = {
+  cid: "1100100000001",
+  title_th: "นาย",
+  firstname_th: "ทดสอบ",
+  lastname_th: "ระบบสุขภาพ",
+  name_th: "นาย ทดสอบ ระบบสุขภาพ",
+  email: "healthid_test@moph.go.th",
+  mobile: "0812345678",
+  hcode: "10999"
+};
+
+async function fetchHealthIdDirectProfile(code, redirectUri) {
+  const settingsSnap = await db.collection("settings").doc("public").get();
+  const settings = settingsSnap.exists ? settingsSnap.data() : {};
+  const endpoints = MOPH_ENDPOINTS[settings.providerIdEnv || process.env.PROVIDERID_ENV] || MOPH_ENDPOINTS.prd;
+  const healthIdClientId = settings.healthIdClientId || process.env.HEALTHID_CLIENT_ID || "";
+  redirectUri = redirectUri || settings.providerIdRedirectUri || "";
+  const healthIdSecret = getSecret("HEALTHID_CLIENT_SECRET");
+
+  if (!healthIdClientId || !healthIdSecret) {
+    throw new HttpsError("failed-precondition", "ยังไม่ได้ตั้งค่า Health ID Client ID หรือ Client Secret ในระบบ");
+  }
+
+  // 1. Health ID: code → access_token
+  const healthResp = await fetch(`${endpoints.healthId}/api/v1/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: redirectUri,
+      client_id: healthIdClientId,
+      client_secret: healthIdSecret
+    })
+  });
+  const healthData = await readJson(healthResp);
+  const healthToken = (healthData.data && healthData.data.access_token) || healthData.access_token;
+  if (!healthResp.ok || !healthToken) {
+    console.error("Health ID token failed", healthResp.status, healthData.message || healthData.error_description || healthData.error);
+    throw new HttpsError("unauthenticated", `Health ID Token error: ${healthData.message || healthData.error_description || healthData.error || healthResp.status}`);
+  }
+
+  // 2. Health ID Profile API (Try /profile -> /userinfo -> /me)
+  let profileResp = await fetch(`${endpoints.healthId}/api/v1/profile`, {
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${healthToken}` }
+  });
+  if (!profileResp.ok) {
+    profileResp = await fetch(`${endpoints.healthId}/api/v1/userinfo`, {
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${healthToken}` }
+    });
+  }
+  if (!profileResp.ok) {
+    profileResp = await fetch(`${endpoints.healthId}/api/v1/me`, {
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${healthToken}` }
+    });
+  }
+
+  const profileData = await readJson(profileResp);
+  const healthUser = profileData.data || profileData.user || profileData;
+  const cid = healthUser.cid || healthUser.pid || healthUser.health_id || healthUser.id || healthUser.national_id || healthUser.sub || "";
+
+  if (!profileResp.ok || !cid) {
+    console.error("Health ID profile failed", profileResp.status, profileData.message || profileData.error);
+    throw new HttpsError("internal", `ไม่สามารถดึงข้อมูล Health ID Profile ได้: ${profileData.message || profileData.error || profileResp.status}`);
+  }
+
+  return { healthUser, accessToken: healthToken };
+}
+
+exports.exchangeHealthIdLogin = onCall(async (request) => {
+  const code = request.data && request.data.code;
+  if (!code) throw new HttpsError("invalid-argument", "ไม่พบ authorization code");
+
+  const isMock = code === MOCK_HEALTHID_CODE && process.env.FUNCTIONS_EMULATOR === "true";
+  const { healthUser, accessToken } = isMock
+    ? { healthUser: MOCK_HEALTHID_PROFILE, accessToken: "mock-healthid-token" }
+    : await fetchHealthIdDirectProfile(code, request.data.redirectUri);
+
+  const cid = healthUser.cid || healthUser.pid || healthUser.health_id || healthUser.id || healthUser.national_id || healthUser.sub || "";
+  const title = healthUser.title_th || healthUser.title || healthUser.prefix || "";
+  const firstName = healthUser.firstname_th || healthUser.first_name_th || healthUser.first_name || healthUser.firstname || "";
+  const lastName = healthUser.lastname_th || healthUser.last_name_th || healthUser.last_name || healthUser.lastname || "";
+  const fullName = healthUser.name_th || healthUser.name || [title, firstName, lastName].filter(Boolean).join(" ").trim();
+
+  const uid = `healthid_${cid}`;
+  const userProfile = await linkOrCreateProfile(uid, "cid", cid, {
+    name: fullName || "ผู้ใช้งาน Health ID",
+    email: healthUser.email || "",
+    phone: healthUser.mobile || healthUser.telephone || healthUser.phone || "",
+    cid: cid,
+    role: "เจ้าหน้าที่",
+    status: "Active"
+  });
+
+  const enriched = {
+    ...userProfile,
+    displayName: fullName || userProfile.name,
+    cid: cid,
+    hospitalCode: healthUser.hcode || healthUser.hname || "",
+    healthIdToken: accessToken
+  };
+
+  if (userProfile.status === "Pending") {
+    return { pending: true, user: enriched };
+  }
+  if (userProfile.status === "Inactive" || userProfile.status === "Disabled") {
+    throw new HttpsError("permission-denied", "บัญชีของคุณถูกระงับการใช้งาน กรุณาติดต่อผู้ดูแลระบบ");
+  }
+
+  const customToken = await admin.auth().createCustomToken(uid);
+  await logActivity("เข้าสู่ระบบ", `เข้าสู่ระบบผ่าน Health ID (CID: ${cid})`, userProfile.email || cid);
+  return { customToken, user: enriched };
+});
+
+exports.exchangeProviderIdLogin = onCall(async (request) => {
   const code = request.data && request.data.code;
   if (!code) throw new HttpsError("invalid-argument", "ไม่พบ authorization code");
 
@@ -320,7 +456,9 @@ exports.exchangeProviderIdLogin = onCall({ secrets: [HEALTHID_CLIENT_SECRET, PRO
   const uid = `providerid_${provider.provider_id}`;
   const userProfile = await linkOrCreateProfile(uid, "providerId", provider.provider_id, {
     name: fullName || provider.name_eng,
-    providerId: provider.provider_id
+    providerId: provider.provider_id,
+    role: org.position || "เจ้าหน้าที่",
+    status: "Active"
   });
 
   const enriched = {
@@ -406,7 +544,7 @@ exports.getData = onCall(async (request) => {
 });
 
 // ── DATA: SAVE / DELETE / BATCH CHILD ─────────────────────────────────────
-exports.saveChild = onCall({ secrets: [LINE_TOKEN] }, async (request) => {
+exports.saveChild = onCall(async (request) => {
   const profile = await requireProfile(request);
   const child = request.data && request.data.child;
   if (!child) throw new HttpsError("invalid-argument", "ไม่พบข้อมูลเด็ก");
@@ -440,7 +578,7 @@ exports.saveChild = onCall({ secrets: [LINE_TOKEN] }, async (request) => {
   );
 
   if (status === "เสี่ยงสูง") {
-    await sendLineNotifyAlert(LINE_TOKEN.value(), docData.name, docData.village, docData.hct, totalScore);
+    await sendLineNotifyAlert(getSecret("LINE_TOKEN"), docData.name, docData.village, docData.hct, totalScore);
   }
   return { success: true, id };
 });
@@ -460,7 +598,7 @@ exports.deleteChild = onCall(async (request) => {
   return { success: true };
 });
 
-exports.saveChildrenBatch = onCall({ secrets: [LINE_TOKEN] }, async (request) => {
+exports.saveChildrenBatch = onCall(async (request) => {
   const profile = await requireProfile(request);
   requireStaff(profile);
   const list = (request.data && request.data.children) || [];
@@ -578,23 +716,33 @@ exports.getPublicSettings = onCall(async () => {
   const snap = await db.collection("settings").doc("public").get();
   const d = snap.exists ? snap.data() : {};
   return {
-    liffId: d.liffId || "", lineClientId: d.lineClientId || "", lineRedirectUri: d.lineRedirectUri || "",
-    healthIdClientId: d.healthIdClientId || "", providerIdRedirectUri: d.providerIdRedirectUri || "",
-    providerIdEnv: d.providerIdEnv || "prd"
+    liffId: d.liffId || process.env.LIFF_ID || "",
+    lineClientId: d.lineClientId || process.env.LINE_CLIENT_ID || "",
+    lineRedirectUri: d.lineRedirectUri || process.env.LINE_REDIRECT_URI || "",
+    healthIdClientId: d.healthIdClientId || process.env.HEALTHID_CLIENT_ID || "",
+    providerIdClientId: d.providerIdClientId || process.env.PROVIDERID_CLIENT_ID || "",
+    providerIdRedirectUri: d.providerIdRedirectUri || process.env.PROVIDERID_REDIRECT_URI || "",
+    providerIdEnv: d.providerIdEnv || process.env.PROVIDERID_ENV || "prd"
   };
 });
 
-exports.getSystemSettings = onCall({ secrets: [LINE_TOKEN, LINE_CLIENT_SECRET, HEALTHID_CLIENT_SECRET, PROVIDERID_SECRET_KEY] }, async (request) => {
+exports.getSystemSettings = onCall(async (request) => {
   const profile = await requireProfile(request);
   requireStaff(profile);
   const snap = await db.collection("settings").doc("public").get();
   const d = snap.exists ? snap.data() : {};
   return {
-    liffId: d.liffId || "", lineClientId: d.lineClientId || "", lineRedirectUri: d.lineRedirectUri || "",
-    healthIdClientId: d.healthIdClientId || "", providerIdClientId: d.providerIdClientId || "",
-    providerIdRedirectUri: d.providerIdRedirectUri || "", providerIdEnv: d.providerIdEnv || "prd",
-    hasLineToken: !!LINE_TOKEN.value(), hasLineClientSecret: !!LINE_CLIENT_SECRET.value(),
-    hasHealthIdClientSecret: !!HEALTHID_CLIENT_SECRET.value(), hasProviderIdSecretKey: !!PROVIDERID_SECRET_KEY.value()
+    liffId: d.liffId || process.env.LIFF_ID || "",
+    lineClientId: d.lineClientId || process.env.LINE_CLIENT_ID || "",
+    lineRedirectUri: d.lineRedirectUri || process.env.LINE_REDIRECT_URI || "",
+    healthIdClientId: d.healthIdClientId || process.env.HEALTHID_CLIENT_ID || "",
+    providerIdClientId: d.providerIdClientId || process.env.PROVIDERID_CLIENT_ID || "",
+    providerIdRedirectUri: d.providerIdRedirectUri || process.env.PROVIDERID_REDIRECT_URI || "",
+    providerIdEnv: d.providerIdEnv || process.env.PROVIDERID_ENV || "prd",
+    hasLineToken: !!getSecret("LINE_TOKEN"),
+    hasLineClientSecret: !!getSecret("LINE_CLIENT_SECRET"),
+    hasHealthIdClientSecret: !!getSecret("HEALTHID_CLIENT_SECRET"),
+    hasProviderIdSecretKey: !!getSecret("PROVIDERID_SECRET_KEY")
   };
 });
 
@@ -617,11 +765,11 @@ exports.saveSystemSettings = onCall(async (request) => {
   return { success: true, warnings };
 });
 
-exports.testLineNotify = onCall({ secrets: [LINE_TOKEN] }, async (request) => {
+exports.testLineNotify = onCall(async (request) => {
   const profile = await requireProfile(request);
   requireStaff(profile);
-  const token = LINE_TOKEN.value();
-  if (!token) return { success: false, error: "ยังไม่ได้ตั้งค่า LINE Token (firebase functions:secrets:set LINE_TOKEN)" };
+  const token = getSecret("LINE_TOKEN");
+  if (!token) return { success: false, error: "ยังไม่ได้ตั้งค่า LINE Token ใน functions/.env หรือ .secret.local" };
 
   const message = `\n🔔 [Iron Zero Risk]\nระบบทดสอบการแจ้งเตือนสำเร็จแล้ว!\nเวลา: ${formatDateTimeTH(new Date())}`;
   try {
