@@ -1,22 +1,28 @@
--- Iron Zero Risk — application database (MySQL / MariaDB).
--- Applied by `npm run db:init`
+-- Iron Zero Risk — application database (PostgreSQL / Supabase).
+-- Applied by `npm run db:init`, which replaces {{schema}} with DB_SCHEMA.
+-- Tables live in a dedicated schema, NOT "public": Supabase publishes "public"
+-- through its REST API (anon key), and this data is identifiable child health data.
+-- Timestamps are Asia/Bangkok wall-clock time (timestamp without time zone).
+
+CREATE SCHEMA IF NOT EXISTS {{schema}};
+SET search_path TO {{schema}};
 
 CREATE TABLE IF NOT EXISTS users (
   id                VARCHAR(64)  PRIMARY KEY,
   name              VARCHAR(255) NOT NULL DEFAULT '',
-  role              VARCHAR(64)  NOT NULL DEFAULT 'รอการอนุมัติ',
+  role              VARCHAR(64)  NOT NULL DEFAULT 'รอการอนุมัติ',  -- เจ้าหน้าที่ รพ. | admin | อสม. | รอการอนุมัติ
   email             VARCHAR(255) NOT NULL DEFAULT '',
   line_user_id      VARCHAR(64)  NOT NULL DEFAULT '',
   phone             VARCHAR(32)  NOT NULL DEFAULT '',
   assigned_village  VARCHAR(255) NOT NULL DEFAULT '',
-  status            VARCHAR(16)  NOT NULL DEFAULT 'Pending',
-  provider_id       VARCHAR(32)  UNIQUE,
-  hosxp_login       VARCHAR(64)  UNIQUE,
-  created_at        TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at        TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  status            VARCHAR(16)  NOT NULL DEFAULT 'Pending',     -- Active | Pending | Inactive | Disabled
+  provider_id       VARCHAR(32)  UNIQUE,                         -- MOPH Provider ID
+  hosxp_login       VARCHAR(64)  UNIQUE,                         -- HOSxP opduser.loginname
+  created_at        TIMESTAMP    NOT NULL DEFAULT (now() AT TIME ZONE 'Asia/Bangkok'),
+  updated_at        TIMESTAMP    NOT NULL DEFAULT (now() AT TIME ZONE 'Asia/Bangkok')
 );
-CREATE INDEX idx_users_line_user_id ON users (line_user_id);
-CREATE INDEX idx_users_email ON users (email);
+CREATE INDEX IF NOT EXISTS idx_users_line_user_id ON users (line_user_id);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users (email);
 
 CREATE TABLE IF NOT EXISTS children (
   id               VARCHAR(64)      PRIMARY KEY,
@@ -28,11 +34,11 @@ CREATE TABLE IF NOT EXISTS children (
   tambon           VARCHAR(128)     NOT NULL DEFAULT 'คลองหาด',
   amphoe           VARCHAR(128)     NOT NULL DEFAULT 'คลองหาด',
   province         VARCHAR(128)     NOT NULL DEFAULT 'สระแก้ว',
-  lat              DOUBLE,
-  lng              DOUBLE,
-  hct              DECIMAL(5,2),
-  weight           DECIMAL(6,2),
-  height           DECIMAL(6,2),
+  lat              DOUBLE PRECISION,
+  lng              DOUBLE PRECISION,
+  hct              NUMERIC(5,2),
+  weight           NUMERIC(6,2),
+  height           NUMERIC(6,2),
   nutrition        VARCHAR(64)      NOT NULL DEFAULT '',
   iron             VARCHAR(64)      NOT NULL DEFAULT '',
   food             VARCHAR(64)      NOT NULL DEFAULT '',
@@ -44,38 +50,70 @@ CREATE TABLE IF NOT EXISTS children (
   score_food       SMALLINT         NOT NULL DEFAULT 0,
   score_social     SMALLINT         NOT NULL DEFAULT 0,
   total_score      SMALLINT         NOT NULL DEFAULT 0,
-  status           VARCHAR(32)      NOT NULL DEFAULT 'เสี่ยงต่ำ',
-  last_date        VARCHAR(32)      NOT NULL DEFAULT '-',
+  status           VARCHAR(32)      NOT NULL DEFAULT 'เสี่ยงต่ำ',     -- เสี่ยงต่ำ | เสี่ยงปานกลาง | เสี่ยงสูง
+  last_date        VARCHAR(32)      NOT NULL DEFAULT '-',            -- yyyy-MM-dd or '-' (text, like the sheet)
   notes            TEXT,
   active           SMALLINT         NOT NULL DEFAULT 1,
-  created_at       TIMESTAMP        NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at       TIMESTAMP        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  created_at       TIMESTAMP        NOT NULL DEFAULT (now() AT TIME ZONE 'Asia/Bangkok'),
+  updated_at       TIMESTAMP        NOT NULL DEFAULT (now() AT TIME ZONE 'Asia/Bangkok')
 );
-CREATE INDEX idx_children_village ON children (village);
-CREATE INDEX idx_children_active ON children (active);
+CREATE INDEX IF NOT EXISTS idx_children_village ON children (village);
+CREATE INDEX IF NOT EXISTS idx_children_active ON children (active);
 
 CREATE TABLE IF NOT EXISTS medicine_log (
   log_id      VARCHAR(64) PRIMARY KEY,
   child_id    VARCHAR(64) NOT NULL,
-  log_date    VARCHAR(16) NOT NULL DEFAULT '',
-  log_time    VARCHAR(8)  NOT NULL DEFAULT '',
+  log_date    VARCHAR(16) NOT NULL DEFAULT '',   -- yyyy-MM-dd
+  log_time    VARCHAR(8)  NOT NULL DEFAULT '',   -- HH:mm
   taken       VARCHAR(64) NOT NULL DEFAULT '',
   vhv_id      VARCHAR(64) NOT NULL DEFAULT '',
   notes       TEXT,
-  created_at  TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at  TIMESTAMP   NOT NULL DEFAULT (now() AT TIME ZONE 'Asia/Bangkok')
 );
-CREATE INDEX idx_medicine_child ON medicine_log (child_id);
+CREATE INDEX IF NOT EXISTS idx_medicine_child ON medicine_log (child_id);
 
 CREATE TABLE IF NOT EXISTS activity_log (
-  id        BIGINT AUTO_INCREMENT PRIMARY KEY,
-  ts        TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  id        BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  ts        TIMESTAMP    NOT NULL,
   username  VARCHAR(255) NOT NULL DEFAULT 'system',
   action    VARCHAR(128) NOT NULL DEFAULT '',
   details   TEXT
 );
-CREATE INDEX idx_activity_ts ON activity_log (ts);
+CREATE INDEX IF NOT EXISTS idx_activity_ts ON activity_log (ts);
 
+-- Non-secret settings editable from the Settings page (secrets live in .env only).
 CREATE TABLE IF NOT EXISTS settings (
   k  VARCHAR(64) PRIMARY KEY,
   v  TEXT
 );
+
+-- updated_at maintenance (MySQL's ON UPDATE CURRENT_TIMESTAMP equivalent).
+CREATE OR REPLACE FUNCTION {{schema}}.set_updated_at() RETURNS trigger AS $$
+BEGIN
+  NEW.updated_at := now() AT TIME ZONE 'Asia/Bangkok';
+  RETURN NEW;
+END
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_users_updated_at ON users;
+CREATE TRIGGER trg_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION {{schema}}.set_updated_at();
+DROP TRIGGER IF EXISTS trg_children_updated_at ON children;
+CREATE TRIGGER trg_children_updated_at BEFORE UPDATE ON children FOR EACH ROW EXECUTE FUNCTION {{schema}}.set_updated_at();
+
+-- Defence in depth on Supabase: row-level security with no policies, so the
+-- anon / authenticated API roles can read nothing even if this schema is ever
+-- exposed. The server connects as the table owner, which RLS does not restrict.
+ALTER TABLE users        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE children     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE medicine_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE activity_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE settings     ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+    EXECUTE 'REVOKE ALL ON SCHEMA {{schema}} FROM anon, authenticated';
+    EXECUTE 'REVOKE ALL ON ALL TABLES IN SCHEMA {{schema}} FROM anon, authenticated';
+  END IF;
+END
+$$;
