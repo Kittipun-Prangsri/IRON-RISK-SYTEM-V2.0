@@ -3,7 +3,8 @@
 ระบบรันด้วย Node.js บน server ของโรงพยาบาล และเก็บข้อมูลในฐานข้อมูล PostgreSQL บน **Supabase** หน้าเว็บใช้ไฟล์ชุดเดียวกับเวอร์ชัน Google Apps Script (`../src/*.html`)
 
 ```
-เบราว์เซอร์ ──HTTPS──► nginx ──► Node.js (พอร์ต 3000) ──► Supabase: schema iron_risk (ข้อมูลหลัก)
+เบราว์เซอร์ ──HTTPS──► Cloudflare Tunnel ──► frontend :5176 (หน้าเว็บ + /api) ──► Supabase: schema iron_risk
+                                              backend  :5002 (เฉพาะ /api, /healthz)
                                         ├──► HOSxP DB (บัญชีอ่านอย่างเดียว)
                                         └──► moph.id.th / provider.id.th (ล็อกอิน Provider ID)
 ```
@@ -43,7 +44,8 @@ npm run db:init    # สร้าง schema และตาราง บน Supa
 ## 4. ตั้งค่า `.env`
 | ค่า | คำอธิบาย |
 |---|---|
-| `PUBLIC_BASE_URL` | URL ที่ผู้ใช้เปิด เช่น `https://ironrisk.khh.go.th` |
+| `PUBLIC_BASE_URL` | `https://ironrisk.khostime.site` |
+| `PORT` / `FRONTEND_PORT` | `5002` (backend: API) / `5176` (frontend: หน้าเว็บ — Cloudflare ชี้มาที่พอร์ตนี้) |
 | `SESSION_SECRET` | สุ่มใหม่: `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"` |
 | `DATABASE_URL` | connection string จาก Supabase (หัวข้อ 2) |
 | `DB_SCHEMA` | `iron_risk` (ค่าเริ่มต้น) |

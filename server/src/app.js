@@ -51,7 +51,9 @@ async function completeSsoLogin(res, user, method) {
   else flash(res, { user: outcome.pending ? outcome.user : null, error: outcome.error });
 }
 
-function createApp() {
+// frontend: true  → web page, OAuth callbacks and /api (what users / Cloudflare hit)
+// frontend: false → API only (/api/*, /healthz) for the backend port
+function createApp({ frontend = true } = {}) {
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", "loopback"); // behind nginx on the same host
@@ -65,6 +67,12 @@ function createApp() {
     next();
   });
 
+  if (frontend) mountFrontend(app);
+  mountApi(app);
+  return app;
+}
+
+function mountFrontend(app) {
   app.use(express.static(path.join(__dirname, "..", "public"), { index: false }));
 
   // ── Provider ID (MOPH) callback ─────────────────────────────────────────
@@ -112,6 +120,10 @@ function createApp() {
     res.type("html").send(renderIndex({ lineUser: flashed.user || null, lineError: flashed.error || null }));
   });
 
+  app.get("/favicon.ico", (req, res) => res.status(204).end());
+}
+
+function mountApi(app) {
   // ── RPC: google.script.run replacement ─────────────────────────────────
   app.post("/api/rpc/:name", express.json({ limit: "5mb" }), async (req, res) => {
     const entry = Object.prototype.hasOwnProperty.call(handlers, req.params.name) ? handlers[req.params.name] : null;
@@ -148,9 +160,6 @@ function createApp() {
   });
 
   app.get("/healthz", (req, res) => res.json({ ok: true }));
-  app.get("/favicon.ico", (req, res) => res.status(204).end());
-
-  return app;
 }
 
 module.exports = { createApp };

@@ -345,3 +345,18 @@ test("Supabase API roles (anon / authenticated) cannot read the app schema", asy
     client.release();
   }
 });
+
+test("backend-only app (PORT) serves the API but not the web page", async () => {
+  const backend = createApp({ frontend: false }).listen(0);
+  await new Promise((r) => backend.once("listening", r));
+  const b = `http://127.0.0.1:${backend.address().port}`;
+  try {
+    assert.equal((await realFetch(`${b}/`)).status, 404);
+    assert.equal((await realFetch(`${b}/auth/healthid/callback`)).status, 404);
+    assert.equal((await realFetch(`${b}/healthz`)).status, 200);
+    const r = await realFetch(`${b}/api/rpc/getSystemSettings`, { method: "POST", headers: { "Content-Type": "application/json", "X-Requested-With": "fetch" }, body: "{}" });
+    assert.equal(r.status, 200);
+  } finally {
+    backend.close();
+  }
+});

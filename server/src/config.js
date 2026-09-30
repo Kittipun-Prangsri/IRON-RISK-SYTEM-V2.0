@@ -18,7 +18,8 @@ const MOPH_ENDPOINTS = {
 };
 
 const config = {
-  port: Number(env.PORT || 3000),
+  port: Number(env.PORT || 3000),                  // backend: API only (/api/*, /healthz)
+  frontendPort: Number(env.FRONTEND_PORT || 0),   // frontend: web page + OAuth callbacks + /api (0 = same as PORT)
   publicBaseUrl,
   // Frontend templates (Index.html + partials) shared with the GAS version.
   srcDir: path.resolve(__dirname, "..", env.SRC_DIR || "../src"),
