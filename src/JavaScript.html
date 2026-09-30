@@ -38,40 +38,58 @@ window.showToast = function(message, type) {
 };
 
 /**
- * แสดงหน้า "รอการอนุมัติ" แบบสวยงาม สำหรับ LINE user ที่เพิ่งลงทะเบียนใหม่
+ * แสดงหน้า "รอการอนุมัติ" สำหรับผู้ใช้ที่เพิ่งลงทะเบียนใหม่ (Provider ID / LINE / อื่นๆ)
  */
+function escapeHtml(value) {
+  return String(value == null ? '' : value).replace(/[&<>"']/g, function(c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+
 window.showPendingApprovalScreen = function(user, message) {
   var loginContainer = document.getElementById('login-container');
   if (!loginContainer) return;
+  user = user || {};
 
-  var avatar = (user && user.avatarUrl) ? user.avatarUrl : '';
-  var displayName = (user && (user.displayName || user.name)) ? (user.displayName || user.name) : 'ผู้ใช้งาน LINE';
-  var lineId = (user && user.lineUserId) ? user.lineUserId : '';
+  // Badge colour/icon and the identity lines depend on how the user signed in.
+  var badge, idLines;
+  if (user.providerId) {
+    badge = { color: '#008f7a', icon: 'fas fa-user-doctor' };
+    idLines = ['Provider ID: ' + user.providerId, user.position, user.hospitalName];
+  } else if (user.lineUserId) {
+    badge = { color: '#06c755', icon: 'fab fa-line' };
+    idLines = ['LINE ID: ' + user.lineUserId];
+  } else {
+    badge = { color: '#64748b', icon: 'fas fa-user' };
+    idLines = [user.email || user.phone];
+  }
+  var displayName = user.displayName || user.name || 'ผู้ใช้งานใหม่';
   var msg = message || 'บัญชีของคุณกำลังรอการอนุมัติจากผู้ดูแลระบบ';
+  var avatarInner = user.avatarUrl
+    ? '<img src="' + escapeHtml(user.avatarUrl) + '" style="width:100%;height:100%;object-fit:cover;">'
+    : '<div style="width:100%;height:100%;background:' + badge.color + ';display:flex;align-items:center;justify-content:center;"><i class="' + badge.icon + '" style="color:#fff;font-size:36px;"></i></div>';
+  var idHtml = idLines.filter(Boolean).map(function(line) {
+    return '<p style="margin:4px 0 0;font-size:0.8rem;color:var(--text-muted);">' + escapeHtml(line) + '</p>';
+  }).join('');
 
   loginContainer.innerHTML = [
     '<div class="login-card" style="text-align:center;max-width:440px;">',
-    '  <div class="login-header">',
-    '    <div class="login-logo">',
-    '      <div style="width:80px;height:80px;border-radius:50%;overflow:hidden;margin:0 auto 12px;border:3px solid #06c755;box-shadow:0 0 0 6px rgba(6,199,85,0.15);">',
-    avatar ? '      <img src="' + avatar + '" style="width:100%;height:100%;object-fit:cover;">' : '      <div style="width:100%;height:100%;background:#06c755;display:flex;align-items:center;justify-content:center;"><i class="fab fa-line" style="color:#fff;font-size:40px;"></i></div>',
-    '      </div>',
-    '      <h2 style="margin:0;font-size:1.1rem;font-weight:600;color:var(--text-primary);">' + displayName + '</h2>',
-    '      <p style="margin:4px 0 0;font-size:0.78rem;color:var(--text-muted);">LINE ID: ' + lineId + '</p>',
+    '  <div style="display:flex;flex-direction:column;align-items:center;">',
+    '    <div style="width:80px;height:80px;border-radius:50%;overflow:hidden;margin:0 auto 12px;border:3px solid ' + badge.color + ';box-shadow:0 0 0 6px rgba(0,0,0,0.12);">',
+    avatarInner,
     '    </div>',
-    '    <div style="margin:24px 0;padding:16px;background:rgba(234,179,8,0.1);border:1px solid rgba(234,179,8,0.3);border-radius:12px;">',
-    '      <i class="fas fa-clock" style="font-size:2rem;color:#eab308;margin-bottom:8px;display:block;"></i>',
-    '      <h3 style="margin:0 0 8px;color:#eab308;font-size:1rem;">รอการอนุมัติ</h3>',
-    '      <p style="margin:0;font-size:0.85rem;color:var(--text-secondary);line-height:1.5;">' + msg + '</p>',
-    '    </div>',
-    '    <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:20px;">กรุณาติดต่อผู้ดูแลระบบเพื่อเปิดสิทธิ์การใช้งาน<br>หลังจากได้รับการอนุมัติแล้วจึงจะสามารถเข้าใช้งานได้</p>',
-    '    <button onclick="window.location.reload()" class="btn btn-success" style="width:100%;margin-bottom:12px;">',
-    '      <i class="fas fa-sync-alt"></i> ตรวจสอบสถานะใหม่',
-    '    </button>',
-    '    <button onclick="window.location.href=window.location.pathname" class="btn btn-secondary" style="width:100%;">',
-    '      <i class="fas fa-arrow-left"></i> กลับหน้าเข้าสู่ระบบ',
-    '    </button>',
+    '    <h2 style="margin:0;font-size:1.1rem;font-weight:600;color:var(--text-primary);">' + escapeHtml(displayName) + '</h2>',
+    idHtml,
     '  </div>',
+    '  <div style="margin:24px 0;padding:16px;background:rgba(234,179,8,0.1);border:1px solid rgba(234,179,8,0.3);border-radius:12px;">',
+    '    <i class="fas fa-clock" style="font-size:2rem;color:#eab308;margin-bottom:8px;display:block;"></i>',
+    '    <h3 style="margin:0 0 8px;color:#eab308;font-size:1rem;">รอการอนุมัติ</h3>',
+    '    <p style="margin:0;font-size:0.85rem;color:var(--text-secondary);line-height:1.5;">' + escapeHtml(msg) + '</p>',
+    '  </div>',
+    '  <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:20px;">กรุณาติดต่อผู้ดูแลระบบเพื่อเปิดสิทธิ์การใช้งาน<br>หลังจากได้รับการอนุมัติแล้ว ให้กดเข้าสู่ระบบอีกครั้ง</p>',
+    '  <button onclick="window.location.href=window.location.pathname" class="btn btn-primary" style="width:100%;">',
+    '    <i class="fas fa-arrow-left"></i> กลับหน้าเข้าสู่ระบบ',
+    '  </button>',
     '</div>'
   ].join('\n');
 };
@@ -149,6 +167,10 @@ window.triggerDevLogin = function() {
 };
 
 window.handleSSOLogin = function(provider) {
+  if (provider === 'providerid') {
+    window.handleProviderIdLogin();
+    return;
+  }
   if (provider !== 'google') {
     window.showToast("ผู้ให้บริการนี้ยังไม่เปิดใช้งาน กรุณาใช้ Google หรือ LINE", "info");
     return;
@@ -1908,6 +1930,12 @@ window.loadSystemSettings = function() {
       if (settings.lineClientId) { document.getElementById('f-setting-line-client-id').value = settings.lineClientId; }
       if (settings.lineRedirectUri) { document.getElementById('f-setting-line-redirect-uri').value = settings.lineRedirectUri; }
       if (settings.liffId) { document.getElementById('f-setting-liff-id').value = settings.liffId; }
+      if (settings.healthIdClientId) { document.getElementById('f-setting-healthid-client-id').value = settings.healthIdClientId; }
+      if (settings.providerIdClientId) { document.getElementById('f-setting-providerid-client-id').value = settings.providerIdClientId; }
+      if (settings.providerIdRedirectUri) { document.getElementById('f-setting-providerid-redirect-uri').value = settings.providerIdRedirectUri; }
+      document.getElementById('f-setting-providerid-env').value = settings.providerIdEnv === 'uat' ? 'uat' : 'prd';
+      document.getElementById('f-setting-healthid-client-secret').placeholder = settings.hasHealthIdClientSecret ? "•••••••• (ตั้งค่าไว้แล้ว — เปลี่ยนผ่าน CLI เท่านั้น)" : "ยังไม่ได้ตั้งค่า (firebase functions:secrets:set HEALTHID_CLIENT_SECRET)";
+      document.getElementById('f-setting-providerid-secret-key').placeholder = settings.hasProviderIdSecretKey ? "•••••••• (ตั้งค่าไว้แล้ว — เปลี่ยนผ่าน CLI เท่านั้น)" : "ยังไม่ได้ตั้งค่า (firebase functions:secrets:set PROVIDERID_SECRET_KEY)";
       document.getElementById('f-setting-line-token').placeholder = settings.hasLineToken ? "•••••••• (ตั้งค่าไว้แล้ว — เปลี่ยนผ่าน CLI เท่านั้น)" : "ยังไม่ได้ตั้งค่า";
       document.getElementById('f-setting-line-client-secret').placeholder = settings.hasLineClientSecret ? "•••••••• (ตั้งค่าไว้แล้ว — เปลี่ยนผ่าน CLI เท่านั้น)" : "ยังไม่ได้ตั้งค่า";
     })
@@ -1918,6 +1946,10 @@ window.saveSettings = function() {
   var lineClientId = document.getElementById('f-setting-line-client-id').value.trim();
   var lineRedirectUri = document.getElementById('f-setting-line-redirect-uri').value.trim();
   var liffId = document.getElementById('f-setting-liff-id').value.trim();
+  var healthIdClientId = document.getElementById('f-setting-healthid-client-id').value.trim();
+  var providerIdClientId = document.getElementById('f-setting-providerid-client-id').value.trim();
+  var providerIdRedirectUri = document.getElementById('f-setting-providerid-redirect-uri').value.trim();
+  var providerIdEnv = document.getElementById('f-setting-providerid-env').value;
 
   window.showLoading(true, "กำลังบันทึกการตั้งค่าระบบ...");
 
@@ -1932,7 +1964,11 @@ window.saveSettings = function() {
     .saveSystemSettings({
       lineClientId: lineClientId,
       lineRedirectUri: lineRedirectUri,
-      liffId: liffId
+      liffId: liffId,
+      healthIdClientId: healthIdClientId,
+      providerIdClientId: providerIdClientId,
+      providerIdRedirectUri: providerIdRedirectUri,
+      providerIdEnv: providerIdEnv
     });
 };
 
@@ -1980,6 +2016,16 @@ window.handleLineLogin = function() {
   }).catch(function(err) {
     window.showLoading(false);
     window.showToast("ไม่สามารถเตรียม LINE Login ได้: " + (err && err.message ? err.message : err), "error");
+  });
+};
+
+window.handleProviderIdLogin = function() {
+  window.showLoading(true, "กำลังเชื่อมต่อกับ Provider ID (MOPH)...");
+  window.fb.getProviderIdLoginUrl().then(function(url) {
+    window.top.location.href = url;
+  }).catch(function(err) {
+    window.showLoading(false);
+    window.showToast("ไม่สามารถเตรียม Provider ID Login ได้: " + (err && err.message ? err.message : err), "error");
   });
 };
 
@@ -2080,8 +2126,14 @@ window.applyUserRolePermissions = function() {
 window.initAuthSession = function() {
   window.showLoading(true, "กำลังตรวจสอบสถานะการเข้าสู่ระบบ...");
 
-  // 1. Resolve a LINE Login redirect (?code=...) if we just came back from LINE's authorize page.
-  window.fb.handleLineRedirect().then(function(lineResult) {
+  // 1. Resolve an OAuth redirect (?code=...) if we just came back from Health ID
+  //    (Provider ID login) or LINE's authorize page.
+  var redirectLabel = "Provider ID";
+  window.fb.handleProviderIdRedirect().then(function(providerResult) {
+    if (providerResult && providerResult.handled) return providerResult;
+    redirectLabel = "LINE";
+    return window.fb.handleLineRedirect();
+  }).then(function(lineResult) {
     if (lineResult && lineResult.handled) {
       window.showLoading(false);
       if (lineResult.pending) {
@@ -2089,7 +2141,7 @@ window.initAuthSession = function() {
       } else if (lineResult.success) {
         window.setSession(lineResult.user);
       } else {
-        window.showToast(lineResult.error || "เข้าสู่ระบบด้วย LINE ไม่สำเร็จ", "error");
+        window.showToast(lineResult.error || ("เข้าสู่ระบบด้วย " + redirectLabel + " ไม่สำเร็จ"), "error");
         document.getElementById('login-container').style.display = 'flex';
         document.getElementById('app').style.display = 'none';
       }

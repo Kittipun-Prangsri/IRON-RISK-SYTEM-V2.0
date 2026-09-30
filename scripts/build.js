@@ -20,16 +20,18 @@ function unwrap(content, tag) {
 function buildIndex() {
   let html = read("Index.html");
 
-  html = html.replace(/<\?!= include\('Stylesheet'\); \?>/, '<link rel="stylesheet" href="assets/css/style.css">');
+  // Absolute asset paths: the page is also served at nested routes such as
+  // /auth/healthid/callback (Hosting rewrites ** → index.html).
+  html = html.replace(/<\?!= include\('Stylesheet'\); \?>/, '<link rel="stylesheet" href="/assets/css/style.css">');
   html = html.replace(/<\?!= include\('Sidebar'\); \?>/, read("Sidebar.html"));
   html = html.replace(/<\?!= include\('Footer'\); \?>/, read("Footer.html"));
   html = html.replace(/<\?!= include\('Modals'\); \?>/, read("Modals.html"));
   html = html.replace(
     /<\?!= include\('JavaScript'\); \?>/,
     [
-      '<script src="firebase-config.js"></script>',
-      '<script type="module" src="assets/js/firebase-adapter.js"></script>',
-      '<script src="assets/js/app.js"></script>'
+      '<script src="/firebase-config.js"></script>',
+      '<script type="module" src="/assets/js/firebase-adapter.js"></script>',
+      '<script src="/assets/js/app.js"></script>'
     ].join("\n  ")
   );
 

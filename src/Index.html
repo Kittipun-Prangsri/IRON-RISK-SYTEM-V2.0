@@ -47,8 +47,8 @@
             <button class="btn btn-sso btn-microsoft" onclick="handleSSOLogin('microsoft')">
               <i class="fab fa-windows" style="color: #00a4ef;"></i> เข้าสู่ระบบด้วย Microsoft SSO
             </button>
-            <button class="btn btn-sso btn-moph" onclick="handleSSOLogin('moph')">
-              <i class="fas fa-shield-halved"></i> เข้าสู่ระบบด้วย MOPH ID (กระทรวงฯ)
+            <button class="btn btn-sso btn-moph" onclick="handleSSOLogin('providerid')">
+              <i class="fas fa-user-doctor"></i> เข้าสู่ระบบด้วย Provider ID (MOPH)
             </button>
           </div>
           
@@ -1029,6 +1029,40 @@
                   <div class="form-group">
                     <label class="form-label">LINE Redirect URI (Callback URL)</label>
                     <input type="text" class="form-control" id="f-setting-line-redirect-uri" placeholder="เว้นว่างไว้เพื่อใช้ URL ปัจจุบันของระบบ">
+                  </div>
+                </div>
+
+                <div class="card" style="margin-top: 16px;">
+                  <div class="card-title">Provider ID (MOPH) Configuration</div>
+                  <p class="text-muted" style="font-size: 12px; margin-bottom: 16px;">
+                    ตั้งค่าเชื่อมต่อ Health ID และ Provider ID ของกระทรวงสาธารณสุข เพื่อให้เจ้าหน้าที่เข้าสู่ระบบด้วย Provider ID ได้ (ขอ Client ID/Secret ได้ที่ provider.id@moph.go.th)
+                  </p>
+                  <div class="form-group">
+                    <label class="form-label">สภาพแวดล้อม (Environment)</label>
+                    <select class="form-control" id="f-setting-providerid-env">
+                      <option value="prd">PRD — ใช้งานจริง (moph.id.th / provider.id.th)</option>
+                      <option value="uat">UAT — ทดสอบ (uat-moph.id.th / uat-provider.id.th)</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Health ID Client ID</label>
+                    <input type="text" class="form-control" id="f-setting-healthid-client-id" placeholder="client_id ที่ได้จากการลงทะเบียนกับ Health ID">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Health ID Client Secret</label>
+                    <input type="password" class="form-control" id="f-setting-healthid-client-secret" placeholder="ตั้งค่าผ่าน CLI เท่านั้น" disabled>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Provider ID Client ID</label>
+                    <input type="text" class="form-control" id="f-setting-providerid-client-id" placeholder="Client-ID ที่ได้รับจากระบบ Provider ID">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Provider ID Secret Key</label>
+                    <input type="password" class="form-control" id="f-setting-providerid-secret-key" placeholder="ตั้งค่าผ่าน CLI เท่านั้น" disabled>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Redirect URI (ต้องตรงกับที่ลงทะเบียนกับ Health ID)</label>
+                    <input type="text" class="form-control" id="f-setting-providerid-redirect-uri" placeholder="เว้นว่าง = https://<โดเมนระบบ>/auth/healthid/callback">
                   </div>
                 </div>
               </div>

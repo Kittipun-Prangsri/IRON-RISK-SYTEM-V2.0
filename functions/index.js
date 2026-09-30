@@ -1,16 +1,27 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
+// Modular import: the Functions emulator proxies `admin.firestore`, which drops
+// the namespace's FieldValue/Timestamp statics (undefined there).
+const { FieldValue, Timestamp } = require("firebase-admin/firestore");
 
 admin.initializeApp();
 const db = admin.firestore();
-const FieldValue = admin.firestore.FieldValue;
 
 const { scoreChild } = require("./lib/scoring");
 const { requireAuth, requireProfile, requireStaff, isVhv } = require("./lib/auth");
 
 const LINE_TOKEN = defineSecret("LINE_TOKEN");
 const LINE_CLIENT_SECRET = defineSecret("LINE_CLIENT_SECRET");
+const HEALTHID_CLIENT_SECRET = defineSecret("HEALTHID_CLIENT_SECRET");
+const PROVIDERID_SECRET_KEY = defineSecret("PROVIDERID_SECRET_KEY");
+
+// Health ID (OAuth) + Provider ID base URLs per environment — from
+// "คู่มือการเชื่อมต่อระบบ Provider ID ด้วย OAuth ของ Health ID" (1 ก.ค. 2567).
+const MOPH_ENDPOINTS = {
+  uat: { healthId: "https://uat-moph.id.th", provider: "https://uat-provider.id.th" },
+  prd: { healthId: "https://moph.id.th", provider: "https://provider.id.th" }
+};
 
 // ── DATE FORMAT HELPERS (Asia/Bangkok, matches Code.gs Utilities.formatDate) ──
 function formatDateTimeTH(date) {
@@ -76,13 +87,14 @@ async function linkOrCreateProfile(uid, matchField, matchValue, defaults) {
     email: defaults.email || "",
     lineUserId: defaults.lineUserId || "",
     phone: defaults.phone || "",
+    providerId: defaults.providerId || "",
     assignedVillage: "",
     status: "Pending",
     authUid: uid,
     createdAt: FieldValue.serverTimestamp()
   };
   await directRef.set(created);
-  await logActivity("ลงทะเบียน", `Auto-register ผู้ใช้ใหม่รอการอนุมัติ: ${created.name}`, defaults.email || defaults.lineUserId || uid);
+  await logActivity("ลงทะเบียน", `Auto-register ผู้ใช้ใหม่รอการอนุมัติ: ${created.name}`, defaults.email || defaults.lineUserId || defaults.providerId || uid);
   return { id: uid, ...created };
 }
 
@@ -190,6 +202,144 @@ exports.exchangeLineLogin = onCall({ secrets: [LINE_CLIENT_SECRET] }, async (req
 
   const customToken = await admin.auth().createCustomToken(uid);
   await logActivity("เข้าสู่ระบบ", "เข้าสู่ระบบผ่าน LINE", userProfile.email || userProfile.lineUserId);
+  return { customToken, user: enriched };
+});
+
+// ── AUTH: PROVIDER ID (MOPH) CODE EXCHANGE (public — this call establishes auth) ─
+// Two systems: Health ID issues the OAuth code/token, then that token is
+// exchanged at Provider ID (separate client_id/secret_key) for a provider
+// token, which is what unlocks the provider's profile. A Health ID user with
+// no Provider ID gets HTTP 400 at the second step.
+async function readJson(resp) {
+  const text = await resp.text();
+  try { return JSON.parse(text); } catch (err) { return { message: text.slice(0, 200) }; }
+}
+
+// Health ID code → Health ID token → Provider ID token → Provider ID profile (`data`).
+async function fetchProviderIdProfile(code, redirectUri) {
+  const settingsSnap = await db.collection("settings").doc("public").get();
+  const settings = settingsSnap.exists ? settingsSnap.data() : {};
+  // Settings page values win; functions/.env (HEALTHID_CLIENT_ID, PROVIDERID_CLIENT_ID,
+  // PROVIDERID_ENV) is the fallback for before anyone can log in to set them.
+  const endpoints = MOPH_ENDPOINTS[settings.providerIdEnv || process.env.PROVIDERID_ENV] || MOPH_ENDPOINTS.prd;
+  const healthIdClientId = settings.healthIdClientId || process.env.HEALTHID_CLIENT_ID || "";
+  const providerClientId = settings.providerIdClientId || process.env.PROVIDERID_CLIENT_ID || "";
+  // Health ID requires the exact redirect_uri used on the authorize request.
+  redirectUri = redirectUri || settings.providerIdRedirectUri || "";
+  const healthIdSecret = HEALTHID_CLIENT_SECRET.value();
+  const providerSecret = PROVIDERID_SECRET_KEY.value();
+
+  if (!healthIdClientId || !healthIdSecret || !providerClientId || !providerSecret) {
+    throw new HttpsError("failed-precondition", "ยังไม่ได้ตั้งค่า Health ID / Provider ID Client ID หรือ Secret ในระบบ");
+  }
+
+  // 1. Health ID: code → access_token
+  const healthResp = await fetch(`${endpoints.healthId}/api/v1/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: redirectUri,
+      client_id: healthIdClientId,
+      client_secret: healthIdSecret
+    })
+  });
+  const healthData = await readJson(healthResp);
+  const healthToken = healthData.data && healthData.data.access_token;
+  if (!healthResp.ok || !healthToken) {
+    console.error("Health ID token failed", healthResp.status, healthData.message);
+    throw new HttpsError("unauthenticated", `Health ID Token error: ${healthData.message || healthResp.status}`);
+  }
+
+  // 2. Provider ID: Health ID token → provider access_token
+  const providerTokenResp = await fetch(`${endpoints.provider}/api/v1/services/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ client_id: providerClientId, secret_key: providerSecret, token_by: "Health ID", token: healthToken })
+  });
+  const providerTokenData = await readJson(providerTokenResp);
+  if (providerTokenResp.status === 400) {
+    throw new HttpsError("permission-denied", "บัญชี Health ID นี้ยังไม่มี Provider ID กรุณาสมัคร Provider ID ก่อนใช้งาน");
+  }
+  const providerToken = providerTokenData.data && providerTokenData.data.access_token;
+  if (!providerTokenResp.ok || !providerToken) {
+    console.error("Provider ID token failed", providerTokenResp.status, providerTokenData.message);
+    throw new HttpsError("unauthenticated", `Provider ID Token error: ${providerTokenData.message || providerTokenResp.status}`);
+  }
+
+  // 3. Provider ID: profile (name + organization[] affiliations)
+  const profileResp = await fetch(`${endpoints.provider}/api/v1/services/profile`, {
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${providerToken}`,
+      "client-id": providerClientId,
+      "secret-key": providerSecret
+    }
+  });
+  const profileData = await readJson(profileResp);
+  const provider = profileData.data;
+  if (!profileResp.ok || !provider || !provider.provider_id) {
+    console.error("Provider ID profile failed", profileResp.status, profileData.message);
+    if (profileResp.status === 404) {
+      throw new HttpsError("permission-denied", "ไม่พบข้อมูล Provider ID ของบัญชีนี้");
+    }
+    throw new HttpsError("internal", `ไม่สามารถดึงข้อมูล Provider ID ได้: ${profileData.message || profileResp.status}`);
+  }
+
+  return provider;
+}
+
+// Emulator-only stand-in for the real Health ID/Provider ID round trip, so the
+// post-login flow can be exercised on localhost before MOPH credentials exist.
+// Shape copied from the guide's example profile response.
+const MOCK_PROVIDER_CODE = "mock-providerid";
+const MOCK_PROVIDER_PROFILE = {
+  provider_id: "0111111111X21",
+  special_title_th: "นายแพทย์",
+  name_th: "หมอพร้อม สงบสุข",
+  name_eng: "Mophrom Eng",
+  organization: [{ position: "แพทย์", hcode: "10999", hname_th: "โรงพยาบาลทดสอบ (Mock)" }]
+};
+
+exports.exchangeProviderIdLogin = onCall({ secrets: [HEALTHID_CLIENT_SECRET, PROVIDERID_SECRET_KEY] }, async (request) => {
+  const code = request.data && request.data.code;
+  if (!code) throw new HttpsError("invalid-argument", "ไม่พบ authorization code");
+
+  const isMock = code === MOCK_PROVIDER_CODE && process.env.FUNCTIONS_EMULATOR === "true";
+  const provider = isMock
+    ? MOCK_PROVIDER_PROFILE
+    : await fetchProviderIdProfile(code, request.data.redirectUri);
+
+  const title = provider.special_title_th || provider.title_th || "";
+  const fullName = [title, provider.name_th || [provider.firstname_th, provider.lastname_th].filter(Boolean).join(" ")]
+    .filter(Boolean).join(" ").trim();
+  const orgs = Array.isArray(provider.organization) ? provider.organization : [];
+  const org = orgs[0] || {};
+
+  const uid = `providerid_${provider.provider_id}`;
+  const userProfile = await linkOrCreateProfile(uid, "providerId", provider.provider_id, {
+    name: fullName || provider.name_eng,
+    providerId: provider.provider_id
+  });
+
+  const enriched = {
+    ...userProfile,
+    displayName: fullName || userProfile.name,
+    position: org.position || "",
+    hospitalCode: org.hcode || "",
+    hospitalName: org.hname_th || ""
+  };
+
+  if (userProfile.status === "Pending") {
+    return { pending: true, user: enriched };
+  }
+  if (userProfile.status === "Inactive" || userProfile.status === "Disabled") {
+    throw new HttpsError("permission-denied", "บัญชีของคุณถูกระงับการใช้งาน กรุณาติดต่อผู้ดูแลระบบ");
+  }
+
+  const customToken = await admin.auth().createCustomToken(uid);
+  await logActivity("เข้าสู่ระบบ", `เข้าสู่ระบบผ่าน Provider ID (${org.hname_th || "-"})`, userProfile.email || provider.provider_id);
   return { customToken, user: enriched };
 });
 
@@ -388,7 +538,7 @@ exports.saveMedicineLog = onCall(async (request) => {
     const parsed = new Date(`${logData.date}T${logData.time || "00:00"}`);
     if (!isNaN(parsed.getTime())) {
       await db.collection("children").doc(String(logData.childId))
-        .update({ lastDate: admin.firestore.Timestamp.fromDate(parsed) })
+        .update({ lastDate: Timestamp.fromDate(parsed) })
         .catch(() => {});
     }
   }
@@ -427,17 +577,24 @@ exports.saveUserRecord = onCall(async (request) => {
 exports.getPublicSettings = onCall(async () => {
   const snap = await db.collection("settings").doc("public").get();
   const d = snap.exists ? snap.data() : {};
-  return { liffId: d.liffId || "", lineClientId: d.lineClientId || "", lineRedirectUri: d.lineRedirectUri || "" };
+  return {
+    liffId: d.liffId || "", lineClientId: d.lineClientId || "", lineRedirectUri: d.lineRedirectUri || "",
+    healthIdClientId: d.healthIdClientId || "", providerIdRedirectUri: d.providerIdRedirectUri || "",
+    providerIdEnv: d.providerIdEnv || "prd"
+  };
 });
 
-exports.getSystemSettings = onCall({ secrets: [LINE_TOKEN, LINE_CLIENT_SECRET] }, async (request) => {
+exports.getSystemSettings = onCall({ secrets: [LINE_TOKEN, LINE_CLIENT_SECRET, HEALTHID_CLIENT_SECRET, PROVIDERID_SECRET_KEY] }, async (request) => {
   const profile = await requireProfile(request);
   requireStaff(profile);
   const snap = await db.collection("settings").doc("public").get();
   const d = snap.exists ? snap.data() : {};
   return {
     liffId: d.liffId || "", lineClientId: d.lineClientId || "", lineRedirectUri: d.lineRedirectUri || "",
-    hasLineToken: !!LINE_TOKEN.value(), hasLineClientSecret: !!LINE_CLIENT_SECRET.value()
+    healthIdClientId: d.healthIdClientId || "", providerIdClientId: d.providerIdClientId || "",
+    providerIdRedirectUri: d.providerIdRedirectUri || "", providerIdEnv: d.providerIdEnv || "prd",
+    hasLineToken: !!LINE_TOKEN.value(), hasLineClientSecret: !!LINE_CLIENT_SECRET.value(),
+    hasHealthIdClientSecret: !!HEALTHID_CLIENT_SECRET.value(), hasProviderIdSecretKey: !!PROVIDERID_SECRET_KEY.value()
   };
 });
 
@@ -446,7 +603,9 @@ exports.saveSystemSettings = onCall(async (request) => {
   requireStaff(profile);
   const s = request.data || {};
   const update = {};
-  ["liffId", "lineClientId", "lineRedirectUri"].forEach((k) => { if (s[k] !== undefined) update[k] = s[k]; });
+  ["liffId", "lineClientId", "lineRedirectUri", "healthIdClientId", "providerIdClientId", "providerIdRedirectUri"]
+    .forEach((k) => { if (s[k] !== undefined) update[k] = s[k]; });
+  if (s.providerIdEnv !== undefined) update.providerIdEnv = s.providerIdEnv === "uat" ? "uat" : "prd";
   if (Object.keys(update).length) {
     await db.collection("settings").doc("public").set(update, { merge: true });
   }

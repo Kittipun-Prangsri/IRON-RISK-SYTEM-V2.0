@@ -1,0 +1,12 @@
+{
+  "name": "iron-risk-system",
+  "version": "2.0.0",
+  "description": "Iron Zero Risk System V2.0",
+  "private": true,
+  "scripts": {
+    "build": "node scripts/build.js",
+    "dev": "npm run serve",
+    "serve": "npm run build && firebase emulators:start",
+    "deploy": "npm run build && firebase deploy --only hosting:ironrisk"
+  }
+}

@@ -5,3 +5,8 @@ __pycache__/
 .DS_Store
 scratch/
 
+
+# Firebase local secrets / logs
+*.local
+firebase-debug*.log
+firestore-debug.log
