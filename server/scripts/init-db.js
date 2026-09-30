@@ -21,7 +21,14 @@ async function initDb() {
 if (require.main === module) {
   initDb()
     .then((n) => { console.log(`Schema "${config.db.schema}" ready (${n} tables).`); return close(); })
-    .catch((err) => { console.error("db:init failed:", err.message); process.exit(1); });
+    .catch((err) => {
+      console.error("db:init failed:", err.message);
+      if (/timeout|ENOTFOUND|ECONNREFUSED|ENETUNREACH|EHOSTUNREACH/i.test(`${err.message} ${err.code}`)) {
+        console.error("→ server เชื่อมต่อ Supabase ไม่ได้: ตรวจว่าใช้ Session pooler (…pooler.supabase.com:5432) และไฟร์วอลล์อนุญาตพอร์ต 5432 ออกภายนอก");
+      }
+      if (/password authentication failed/i.test(err.message)) console.error("→ รหัสผ่านใน DATABASE_URL ไม่ถูกต้อง");
+      process.exit(1);
+    });
 }
 
 module.exports = { initDb };

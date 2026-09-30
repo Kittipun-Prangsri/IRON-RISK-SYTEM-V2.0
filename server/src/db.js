@@ -30,7 +30,13 @@ function sslOptions() {
 function getPool() {
   if (!pool) {
     if (!config.db.url) throw new Error("DATABASE_URL is not set (Supabase → Connect → Session pooler connection string)");
-    pool = new Pool({ connectionString: config.db.url, ssl: sslOptions(), max: 10 });
+    pool = new Pool({
+      connectionString: config.db.url,
+      ssl: sslOptions(),
+      max: 10,
+      // Fail with a clear error instead of hanging forever when the DB host is unreachable.
+      connectionTimeoutMillis: 15000
+    });
     // A dropped idle connection must not crash the process; the pool reconnects.
     pool.on("error", (err) => console.error("[db] idle connection error:", err.message));
   }
