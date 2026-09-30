@@ -1928,6 +1928,7 @@ window.togglePasswordVisibility = function(inputId) {
 };
 
 window.loadSystemSettings = function() {
+  if (!currentUser || currentUser.role !== 'เจ้าหน้าที่') return;
   window.backend
     .withSuccessHandler(function(settings) {
       if (settings.lineClientId) { document.getElementById('f-setting-line-client-id').value = settings.lineClientId; }
@@ -1941,6 +1942,9 @@ window.loadSystemSettings = function() {
       document.getElementById('f-setting-providerid-secret-key').placeholder = settings.hasProviderIdSecretKey ? "•••••••• (ตั้งค่าไว้แล้ว — เปลี่ยนผ่าน CLI เท่านั้น)" : "ยังไม่ได้ตั้งค่า (firebase functions:secrets:set PROVIDERID_SECRET_KEY)";
       document.getElementById('f-setting-line-token').placeholder = settings.hasLineToken ? "•••••••• (ตั้งค่าไว้แล้ว — เปลี่ยนผ่าน CLI เท่านั้น)" : "ยังไม่ได้ตั้งค่า";
       document.getElementById('f-setting-line-client-secret').placeholder = settings.hasLineClientSecret ? "•••••••• (ตั้งค่าไว้แล้ว — เปลี่ยนผ่าน CLI เท่านั้น)" : "ยังไม่ได้ตั้งค่า";
+    })
+    .withFailureHandler(function(err) {
+      console.error("Failed to load system settings:", err);
     })
     .getSystemSettings();
 };
@@ -2022,10 +2026,17 @@ window.moveOtpFocus = function(current, nextId) {
   if (current.value.length >= 1 && nextId) { document.getElementById(nextId).focus(); }
 };
 
-window.submitStaffEmailLogin = function() {
-  var email = document.getElementById('login-staff-email').value.trim();
-  var password = document.getElementById('login-staff-password').value.trim();
-  if (!email || !password) { window.showToast("กรุณากรอกอีเมลและรหัสผ่าน", "error"); return; }
+window.submitHOSxPLogin = function() {
+  var username = document.getElementById('login-hosxp-user').value.trim();
+  var password = document.getElementById('login-hosxp-password').value.trim();
+  if (!username || !password) { window.showToast("กรุณากรอกชื่อผู้ใช้งานและรหัสผ่าน", "error"); return; }
+  
+  // แปลง username ให้เป็น email format ถ้าผู้ใช้ไม่ได้พิมพ์ @ มา
+  var email = username;
+  if (email.indexOf('@') === -1) {
+    email = email + "@ironrisk.local"; // Dummy domain สำหรับ HOSxP Username
+  }
+
   window.showLoading(true, "กำลังตรวจสอบข้อมูล...");
   window.fb.signInStaffEmail(email, password).then(function(res) {
     window.showLoading(false);
@@ -2034,7 +2045,11 @@ window.submitStaffEmailLogin = function() {
     else { window.showToast(res.error || "เข้าสู่ระบบล้มเหลว", "error"); }
   }).catch(function(err) {
     window.showLoading(false);
-    window.showToast(err && err.message ? err.message : String(err), "error");
+    var errMsg = "เข้าสู่ระบบล้มเหลว";
+    if (err && err.code === 'auth/invalid-credential') {
+      errMsg = "ชื่อผู้ใช้งาน หรือ รหัสผ่านไม่ถูกต้อง";
+    }
+    window.showToast(errMsg, "error");
   });
 };
 
@@ -2133,7 +2148,7 @@ window.logout = function() {
   window.fb.signOut().finally(function() {
     currentUser = null;
     window.showLoading(false);
-    document.getElementById('login-staff-email').value = ''; document.getElementById('login-staff-password').value = '';
+    document.getElementById('login-hosxp-user').value = ''; document.getElementById('login-hosxp-password').value = '';
     document.getElementById('login-vhv-phone').value = ''; window.resetOTPStep();
     document.getElementById('login-container').style.display = 'flex'; document.getElementById('app').style.display = 'none';
     window.showToast("ออกจากระบบสำเร็จแล้ว 🔒", "info");
