@@ -56,11 +56,13 @@ app.get('/auth/healthid/callback', async (req, res) => {
     const { access_token, id_token } = tokenResponse.data;
 
     // 2. Fetch user profile using access_token
+    let userData = null;
     try {
       const profileResponse = await axios.get(`${healthIdBaseUrl}/api/v1/userinfo`, {
         headers: { Authorization: `Bearer ${access_token}` }
       });
-      console.log('HealthID User Profile (from /api/v1/userinfo):', profileResponse.data);
+      userData = profileResponse.data;
+      console.log('HealthID User Profile (from /api/v1/userinfo):', userData);
     } catch (profileErr) {
       console.error('Error fetching profile from /api/v1/userinfo:', profileErr.response?.data || profileErr.message);
       // Fallback try without /api/v1
@@ -68,7 +70,8 @@ app.get('/auth/healthid/callback', async (req, res) => {
         const fallbackResponse = await axios.get(`${healthIdBaseUrl}/userinfo`, {
           headers: { Authorization: `Bearer ${access_token}` }
         });
-        console.log('HealthID User Profile (from /userinfo):', fallbackResponse.data);
+        userData = fallbackResponse.data;
+        console.log('HealthID User Profile (from /userinfo):', userData);
       } catch (fallbackErr) {
         console.error('Error fetching profile from /userinfo:', fallbackErr.response?.data || fallbackErr.message);
       }
@@ -76,14 +79,15 @@ app.get('/auth/healthid/callback', async (req, res) => {
     console.log('ID Token:', id_token);
 
     // 3. Create a session for the user or redirect them to the frontend
-    // For now, we will just return success and the token data for debugging.
-    
-    // res.json({
-    //   message: 'Authentication successful',
-    //   data: tokenResponse.data
-    // });
+    if (userData) {
+      // Encode user data as base64 to safely pass in cookie
+      const userBase64 = Buffer.from(JSON.stringify(userData)).toString('base64');
+      res.cookie('healthid_profile', userBase64, { 
+        maxAge: 24 * 60 * 60 * 1000, // 1 day
+        httpOnly: false // Allow frontend JS to read for UI
+      });
+    }
 
-    // Normally you redirect back to your frontend with a session token
     res.redirect(`${process.env.PUBLIC_BASE_URL}/dashboard?success=true`);
 
   } catch (err) {

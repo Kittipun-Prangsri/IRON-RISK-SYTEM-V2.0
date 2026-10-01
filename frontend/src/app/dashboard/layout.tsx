@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { 
   LayoutDashboard, Users, AlertTriangle, UserCheck, 
   Apple, Pill, MapPin, UserPlus, ClipboardList, 
@@ -9,6 +10,31 @@ import {
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const [profile, setProfile] = useState<{name?: string, position?: string, initials?: string} | null>(null);
+
+  useEffect(() => {
+    // Read healthid_profile cookie
+    const cookies = document.cookie.split(';');
+    const healthidCookie = cookies.find(c => c.trim().startsWith('healthid_profile='));
+    if (healthidCookie) {
+      try {
+        const base64Data = healthidCookie.split('=')[1];
+        // Decode base64, handling possible URI encoding
+        const jsonStr = atob(decodeURIComponent(base64Data));
+        const data = JSON.parse(jsonStr);
+        
+        // MOPH HealthID format mapping
+        // Try various common MOPH HealthID fields
+        const fullName = data.name || `${data.given_name || ''} ${data.family_name || ''}`.trim() || 'ผู้ใช้งาน';
+        const position = data.profession_name || data.position || (data.hcode ? 'บุคลากรสาธารณสุข' : 'ผู้ใช้งานระบบ');
+        const initials = data.given_name ? data.given_name.charAt(0) : fullName.charAt(0);
+        
+        setProfile({ name: fullName, position, initials });
+      } catch (e) {
+        console.error('Failed to parse healthid cookie', e);
+      }
+    }
+  }, []);
 
   const getLinkClass = (path: string) => {
     return pathname === path 
@@ -98,12 +124,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <button className="p-2 text-slate-400 hover:bg-slate-100 rounded-full"><Moon size={18} /></button>
             <button className="p-2 text-slate-400 hover:bg-slate-100 rounded-full"><RefreshCw size={18} /></button>
             <div className="flex items-center gap-3 ml-2 pl-4 border-l border-slate-200">
-              <div className="text-right">
-                <p className="text-sm font-semibold leading-tight">นพ. สมชาย รักดี</p>
-                <p className="text-[11px] text-slate-500">เจ้าหน้าที่ รพ.</p>
+              <div className="text-right flex flex-col justify-center">
+                <p className="text-sm font-semibold leading-tight text-slate-800">{profile ? profile.name : 'นพ. สมชาย รักดี'}</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">ตำแหน่ง: {profile ? profile.position : 'แพทย์ปฏิบัติการ'}</p>
+                <p className="text-[11px] text-teal-600 font-medium">สถานที่: โรงพยาบาลคลองหาด</p>
               </div>
-              <div className="w-8 h-8 bg-teal-600 text-white rounded-full flex items-center justify-center font-semibold">
-                น
+              <div className="w-10 h-10 bg-gradient-to-br from-teal-500 to-teal-700 text-white rounded-full flex items-center justify-center font-semibold shadow-sm border-2 border-white">
+                {profile ? profile.initials : 'นพ'}
               </div>
             </div>
           </div>
