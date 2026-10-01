@@ -3,7 +3,13 @@
 -- __SCHEMA__ is replaced with DB_SCHEMA by migrate.js. Idempotent: safe to run again.
 
 CREATE SCHEMA IF NOT EXISTS __SCHEMA__;
-REVOKE ALL ON SCHEMA __SCHEMA__ FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON SCHEMA __SCHEMA__ FROM PUBLIC;
+-- Supabase's API roles; they only exist on Supabase, not on a plain PostgreSQL.
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+    EXECUTE 'REVOKE ALL ON SCHEMA __SCHEMA__ FROM anon, authenticated';
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS __SCHEMA__.users (
   id              BIGSERIAL PRIMARY KEY,

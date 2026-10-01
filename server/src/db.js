@@ -13,9 +13,14 @@ types.setTypeParser(types.builtins.DATE, (v) => v);
 const schema = process.env.DB_SCHEMA || 'iron_risk_v2';
 if (!/^[a-z_][a-z0-9_]*$/.test(schema)) throw new Error(`Invalid DB_SCHEMA: ${schema}`);
 
+// TLS for remote databases (Supabase); a PostgreSQL on the same server needs none.
+// Override with DB_SSL=true/false.
+const dbHost = (() => { try { return new URL(process.env.DATABASE_URL).hostname; } catch { return ''; } })();
+const useSsl = process.env.DB_SSL ? process.env.DB_SSL === 'true' : !['localhost', '127.0.0.1', '::1', ''].includes(dbHost);
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  ssl: useSsl ? { rejectUnauthorized: false } : false,
   options: `-c search_path=${schema}`,
   max: 5,
   // Fail fast instead of hanging the request (and the Next.js proxy) when the
