@@ -11,7 +11,9 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell 
 } from "recharts";
 
-export default function Dashboard() {
+import { Suspense } from "react";
+
+function DashboardContent() {
   const searchParams = useSearchParams();
   const [data, setData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
