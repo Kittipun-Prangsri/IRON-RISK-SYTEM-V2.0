@@ -1,50 +1,29 @@
 import { NextResponse } from 'next/server';
-
-function parseCSV(csvString: string) {
-  const lines = csvString.split('\n');
-  if (lines.length < 2) return [];
-  
-  const results = [];
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
-    
-    const regex = /,(?=(?:(?:[^"]*"){2})*[^"]*$)/;
-    let values = line.split(regex).map(val => val.replace(/^"|"$/g, '').trim());
-    
-    results.push({
-      cid: values[0] || '',
-      name: values[1] || '',
-      age: values[2] || '',
-      status: values[3] || '', 
-      address: values[4] || '', 
-      village: values[6] || '', 
-      hct: values[9] || '',
-      nutrition: values[12] || '', 
-      iron: values[13] || '',
-    });
-  }
-  return results;
-}
+import { supabase } from '@/lib/supabase';
 
 export async function GET() {
   try {
-    const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/1lpQ502MZlt8sUyOlgirGozD05Gs1N8B6QEJdVxHNoDs/gviz/tq?tqx=out:csv&sheet=Data";
-    
-    const response = await fetch(SHEET_CSV_URL, {
-      cache: 'no-store'
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Google Sheets responded with ${response.status}`);
+    const { data: childrenData, error } = await supabase
+      .from('children')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      throw error;
     }
 
-    const csvText = await response.text();
-    const childrenData = parseCSV(csvText);
+    // Map DB columns to the keys expected by the UI
+    const mappedChildren = (childrenData || []).map(c => ({
+      ...c,
+      status: c.risk_level,
+      hct: c.hct_percentage,
+      iron: c.iron_supplement_received,
+      nutrition: c.nutrition_status
+    }));
     
-    return NextResponse.json({ children: childrenData });
+    return NextResponse.json({ children: mappedChildren });
   } catch (error: any) {
-    console.error('Error fetching from Google Sheets:', error);
+    console.error('Error fetching from Supabase:', error);
     return NextResponse.json({ error: error.message || 'Failed to fetch data' }, { status: 500 });
   }
 }
