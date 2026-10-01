@@ -5,7 +5,7 @@ import { api, errorMessage } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import type { ActivityLog } from "@/lib/types";
 import { isStaff, useMe } from "@/components/AppContext";
-import { Card, Empty, ErrorBox, Loading, PageHeader, btn, input } from "@/components/ui";
+import { Card, Empty, ErrorBox, Loading, PageHeader, btn, input, inputInline } from "@/components/ui";
 
 export default function LogPage() {
   const me = useMe();
@@ -51,7 +51,7 @@ export default function LogPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาผู้ใช้หรือรายละเอียด..." className={`${input} pl-9`} />
           </div>
-          <select value={action} onChange={(e) => setAction(e.target.value)} className={`${input} w-auto`}>
+          <select value={action} onChange={(e) => setAction(e.target.value)} className={inputInline}>
             <option value="">ทุกการกระทำ</option>
             {actions.map((a) => <option key={a}>{a}</option>)}
           </select>

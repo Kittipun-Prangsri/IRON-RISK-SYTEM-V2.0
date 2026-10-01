@@ -8,7 +8,7 @@ import { CHILD_CSV_COLUMNS, downloadCSV, toCSV } from "@/lib/csv";
 import { fmtNum, todayISO } from "@/lib/format";
 import { isStaff, useChildren, useMe } from "@/components/AppContext";
 import { ChildDetailModal } from "@/components/ChildModals";
-import { Empty, ErrorBox, Loading, PageHeader, RiskBadge, btn, input } from "@/components/ui";
+import { Empty, ErrorBox, Loading, PageHeader, RiskBadge, btn, input, inputInline } from "@/components/ui";
 
 function ChildrenContent() {
   const me = useMe();
@@ -52,15 +52,15 @@ function ChildrenContent() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input type="search" placeholder="ค้นหาชื่อเด็ก, ผู้ดูแล, หมู่บ้าน, บ้านเลขที่..." value={search} onChange={(e) => setSearch(e.target.value)} className={`${input} pl-9`} />
           </div>
-          <select value={risk} onChange={(e) => setRisk(e.target.value)} className={`${input} w-auto`}>
+          <select value={risk} onChange={(e) => setRisk(e.target.value)} className={inputInline}>
             <option value="">ทุกระดับความเสี่ยง</option>
             {RISK_LEVELS.map((r) => <option key={r} value={r}>{r}</option>)}
           </select>
-          <select value={village} onChange={(e) => setVillage(e.target.value)} className={`${input} w-auto`}>
+          <select value={village} onChange={(e) => setVillage(e.target.value)} className={inputInline}>
             <option value="">ทุกหมู่บ้าน</option>
             {KHLONG_HAT_VILLAGES.map((v) => <option key={v.moo} value={v.moo}>หมู่ {v.moo} {v.name}</option>)}
           </select>
-          <select value={nutrition} onChange={(e) => setNutrition(e.target.value)} className={`${input} w-auto`}>
+          <select value={nutrition} onChange={(e) => setNutrition(e.target.value)} className={inputInline}>
             <option value="">ทุกภาวะโภชนาการ</option>
             {NUTRITION_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
           </select>

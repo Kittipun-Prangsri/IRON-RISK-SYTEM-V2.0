@@ -92,10 +92,13 @@ export const btn = {
   secondary: "inline-flex items-center justify-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 text-sm font-medium disabled:opacity-50",
   danger: "inline-flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium shadow-sm disabled:opacity-50",
   dangerSoft: "inline-flex items-center justify-center gap-2 px-4 py-2 bg-red-50 text-red-600 border border-red-100 rounded-lg hover:bg-red-100 text-sm font-medium",
-  ghost: "inline-flex items-center gap-1.5 px-3 py-1.5 text-teal-700 hover:bg-teal-50 rounded-lg text-xs font-medium",
+  ghost: "inline-flex items-center gap-1.5 px-3 py-1.5 text-teal-700 hover:bg-teal-50 rounded-lg text-xs font-medium whitespace-nowrap",
 };
 
-export const input = "w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500";
+const inputBase = "px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500";
+export const input = `w-full ${inputBase}`;
+// For selects/inputs that sit inline in a filter bar and size to their content.
+export const inputInline = `w-auto ${inputBase}`;
 export const label = "block text-xs font-medium text-slate-600 mb-1.5";
 
 export function Field({ label: text, children, required, className = "" }: { label: string; children: React.ReactNode; required?: boolean; className?: string }) {

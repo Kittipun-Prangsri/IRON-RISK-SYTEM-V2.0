@@ -11,7 +11,7 @@ import type { Pregnancy } from "@/lib/types";
 import { isStaff, useMe, usePregnancies } from "@/components/AppContext";
 import { MedicineLogModal } from "@/components/ChildModals";
 import { PregnancyDetailModal, PregnancyStatus } from "@/components/PregnancyModals";
-import { Empty, ErrorBox, Loading, PageHeader, RiskBadge, btn, input } from "@/components/ui";
+import { Empty, ErrorBox, Loading, PageHeader, RiskBadge, btn, input, inputInline } from "@/components/ui";
 
 function PregnancyListContent() {
   const me = useMe();
@@ -70,7 +70,7 @@ function PregnancyListContent() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input type="search" placeholder="ค้นหาชื่อ, สามี, หมู่บ้าน, เบอร์โทร..." value={search} onChange={(e) => setSearch(e.target.value)} className={`${input} pl-9`} />
           </div>
-          <select value={stage} onChange={(e) => setStage(e.target.value)} className={`${input} w-auto`}>
+          <select value={stage} onChange={(e) => setStage(e.target.value)} className={inputInline}>
             <option value="pregnant">กำลังตั้งครรภ์</option>
             <option value="1">ไตรมาส 1</option>
             <option value="2">ไตรมาส 2</option>
@@ -78,11 +78,11 @@ function PregnancyListContent() {
             <option value="delivered">คลอดแล้ว</option>
             <option value="">ทั้งหมด</option>
           </select>
-          <select value={risk} onChange={(e) => setRisk(e.target.value)} className={`${input} w-auto`}>
+          <select value={risk} onChange={(e) => setRisk(e.target.value)} className={inputInline}>
             <option value="">ทุกระดับความเสี่ยง</option>
             {RISK_LEVELS.map((r) => <option key={r} value={r}>{r}</option>)}
           </select>
-          <select value={village} onChange={(e) => setVillage(e.target.value)} className={`${input} w-auto`}>
+          <select value={village} onChange={(e) => setVillage(e.target.value)} className={inputInline}>
             <option value="">ทุกหมู่บ้าน</option>
             {KHLONG_HAT_VILLAGES.map((v) => <option key={v.moo} value={v.moo}>หมู่ {v.moo} {v.name}</option>)}
           </select>

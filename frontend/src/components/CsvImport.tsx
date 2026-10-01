@@ -5,7 +5,7 @@ import { Upload, FileSpreadsheet } from "lucide-react";
 import { ApiError, api, errorMessage } from "@/lib/api";
 import { csvToRows, type CsvColumn } from "@/lib/csv";
 import { useToast } from "./AppContext";
-import { Modal, btn, input } from "./ui";
+import { Modal, btn, inputInline } from "./ui";
 
 // Import a CSV into a registry. Rows are mapped by header (see lib/csv.ts columns);
 // the server validates everything and rejects the whole file if any row is bad.
@@ -47,7 +47,7 @@ export function CsvImport<T>({ columns, importPath, doneHref }: { columns: CsvCo
 
   return (
     <>
-      <select value={encoding} onChange={(e) => setEncoding(e.target.value)} className={`${input} w-auto`} title="การเข้ารหัสไฟล์">
+      <select value={encoding} onChange={(e) => setEncoding(e.target.value)} className={inputInline} title="การเข้ารหัสไฟล์">
         <option value="utf-8">UTF-8</option>
         <option value="windows-874">TIS-620 (Excel ภาษาไทย)</option>
       </select>
