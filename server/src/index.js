@@ -17,8 +17,6 @@ app.get('/', (req, res) => {
 
 // HealthID Callback Endpoint
 app.get('/auth/healthid/callback', async (req, res) => {
-  console.log('--- Incoming HealthID Callback ---');
-  console.log('Request Query Parameters:', req.query);
   
   const { code, state, error } = req.query;
 
