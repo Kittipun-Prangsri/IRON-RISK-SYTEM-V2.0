@@ -1,4 +1,5 @@
 "use client";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -47,7 +48,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <aside className="w-64 bg-white border-r border-slate-200 flex flex-col shadow-sm z-10">
         <div className="p-5 border-b border-slate-100 flex items-center gap-3">
           <div className="w-10 h-10 bg-teal-50 text-teal-600 rounded-lg flex items-center justify-center">
-            <LayoutDashboard size={24} />
+            <Image src="/icon.svg" alt="Iron Zero Risk" width={26} height={26} />
           </div>
           <div>
             <h2 className="font-kanit font-bold text-teal-600 leading-tight">Iron Zero Risk</h2>
