@@ -1,87 +1,287 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { 
+  LayoutDashboard, Users, AlertTriangle, UserCheck, 
+  Apple, Pill, MapPin, UserPlus, ClipboardList, 
+  Settings, LogOut, Search, Moon, RefreshCw, FileText
+} from "lucide-react";
+import { 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, 
+  ResponsiveContainer, PieChart, Pie, Cell 
+} from "recharts";
 
 export default function Dashboard() {
   const searchParams = useSearchParams();
-  const [isSuccess, setIsSuccess] = useState(false);
+  const [data, setData] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const SCRIPT_URL = "/api/data";
 
   useEffect(() => {
-    if (searchParams.get("success") === "true") {
-      setIsSuccess(true);
-    }
-  }, [searchParams]);
+    const fetchData = async () => {
+      try {
+        const response = await fetch(SCRIPT_URL);
+        const result = await response.json();
+        setData(result);
+      } catch (error) {
+        console.error("Error fetching data:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
+  // Stats
+  const children = data?.children || [];
+  const totalChildren = children.length;
+  const highRisk = children.filter((c: any) => c.status === "เสี่ยงสูง").length;
+  const medRisk = children.filter((c: any) => c.status === "เสี่ยงปานกลาง").length;
+  const lowRisk = children.filter((c: any) => c.status === "เสี่ยงต่ำ").length;
+  
+  const validHct = children.filter((c: any) => parseFloat(c.hct) > 0);
+  const avgHct = validHct.length > 0 
+    ? (validHct.reduce((acc: number, curr: any) => acc + parseFloat(curr.hct), 0) / validHct.length).toFixed(1) 
+    : "0";
+    
+  const ironSupplements = children.filter((c: any) => c.iron === "ได้" || c.iron === "สม่ำเสมอ").length;
+  const ironPercent = totalChildren > 0 ? Math.round((ironSupplements / totalChildren) * 100) : 0;
+
+  // Chart Data: Risk Level
+  const riskData = [
+    { name: 'เสี่ยงสูง', value: highRisk, color: '#ef4444' },
+    { name: 'เสี่ยงปานกลาง', value: medRisk, color: '#f59e0b' },
+    { name: 'เสี่ยงต่ำ', value: lowRisk, color: '#10b981' },
+  ];
+
+  // Chart Data: Nutrition
+  const nutCounts = children.reduce((acc: any, curr: any) => {
+    const status = curr.nutrition || 'ไม่ระบุ';
+    acc[status] = (acc[status] || 0) + 1;
+    return acc;
+  }, {});
+  const nutritionData = Object.keys(nutCounts).map(key => ({
+    name: key,
+    value: nutCounts[key],
+    color: key === 'สมส่วน' ? '#10b981' : key.includes('ผอม') ? '#f59e0b' : '#ef4444'
+  }));
 
   return (
-    <div className="flex h-screen bg-slate-50 dark:bg-slate-900 font-sarabun text-slate-800 dark:text-slate-100">
+    <div className="flex h-screen bg-slate-50 font-sarabun text-slate-800">
       
       {/* Sidebar */}
-      <aside className="w-64 bg-white dark:bg-slate-950 border-r border-slate-200 dark:border-slate-800 flex flex-col">
-        <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex items-center gap-3">
-          <div className="w-10 h-10 bg-teal-500/10 text-teal-500 rounded-xl flex items-center justify-center">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
+      <aside className="w-64 bg-white border-r border-slate-200 flex flex-col shadow-sm z-10">
+        <div className="p-5 border-b border-slate-100 flex items-center gap-3">
+          <div className="w-10 h-10 bg-teal-50 text-teal-600 rounded-lg flex items-center justify-center">
+            <LayoutDashboard size={24} />
           </div>
           <div>
-            <h2 className="font-kanit font-bold text-teal-500 tracking-wide leading-tight">IRON ZERO</h2>
-            <p className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">Risk System</p>
+            <h2 className="font-kanit font-bold text-teal-600 leading-tight">Iron Zero Risk</h2>
+            <p className="text-[11px] text-slate-500">ระบบติดตามสุขภาพเด็ก</p>
           </div>
         </div>
-        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-          <p className="text-[10px] font-semibold tracking-[1.2px] text-slate-400 uppercase px-4 py-2">เมนูหลัก</p>
-          <a href="#" className="flex items-center gap-3 px-4 py-2.5 bg-teal-500/10 text-teal-600 dark:text-teal-400 border-l-4 border-teal-500 rounded-r-lg font-medium">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
-            ภาพรวมระบบ
+        
+        <div className="flex-1 overflow-y-auto py-4 px-3 space-y-6">
+          <div>
+            <p className="text-[11px] font-semibold text-slate-400 mb-2 px-3">หลัก</p>
+            <nav className="space-y-1">
+              <a href="#" className="flex items-center gap-3 px-3 py-2 bg-teal-50 text-teal-600 rounded-lg font-medium">
+                <LayoutDashboard size={18} /> Dashboard
+              </a>
+              <a href="#" className="flex items-center justify-between px-3 py-2 text-slate-600 hover:bg-slate-50 rounded-lg">
+                <div className="flex items-center gap-3"><Users size={18} /> ข้อมูลเด็ก</div>
+                <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full">{totalChildren}</span>
+              </a>
+              <a href="#" className="flex items-center gap-3 px-3 py-2 text-slate-600 hover:bg-slate-50 rounded-lg">
+                <AlertTriangle size={18} /> การประเมินความเสี่ยง
+              </a>
+              <a href="#" className="flex items-center gap-3 px-3 py-2 text-slate-600 hover:bg-slate-50 rounded-lg">
+                <UserCheck size={18} /> แบบประเมินรายบุคคล
+              </a>
+              <a href="#" className="flex items-center gap-3 px-3 py-2 text-slate-600 hover:bg-slate-50 rounded-lg">
+                <Apple size={18} /> สถานะโภชนาการ
+              </a>
+              <a href="#" className="flex items-center gap-3 px-3 py-2 text-slate-600 hover:bg-slate-50 rounded-lg">
+                <Pill size={18} /> ยาธาตุเหล็ก
+              </a>
+            </nav>
+          </div>
+          
+          <div>
+            <p className="text-[11px] font-semibold text-slate-400 mb-2 px-3">จัดการ</p>
+            <nav className="space-y-1">
+              <a href="#" className="flex items-center gap-3 px-3 py-2 text-slate-600 hover:bg-slate-50 rounded-lg">
+                <MapPin size={18} /> หมู่บ้าน
+              </a>
+              <a href="#" className="flex items-center gap-3 px-3 py-2 text-slate-600 hover:bg-slate-50 rounded-lg">
+                <UserPlus size={18} /> เพิ่มข้อมูลเด็ก
+              </a>
+              <a href="#" className="flex items-center gap-3 px-3 py-2 text-slate-600 hover:bg-slate-50 rounded-lg">
+                <ClipboardList size={18} /> บันทึกกิจกรรม
+              </a>
+              <a href="#" className="flex items-center gap-3 px-3 py-2 text-slate-600 hover:bg-slate-50 rounded-lg">
+                <Users size={18} /> จัดการผู้ใช้งาน
+              </a>
+              <a href="#" className="flex items-center gap-3 px-3 py-2 text-slate-600 hover:bg-slate-50 rounded-lg">
+                <Settings size={18} /> ตั้งค่า
+              </a>
+            </nav>
+          </div>
+        </div>
+
+        <div className="p-4 border-t border-slate-100">
+          <a href="#" className="flex items-center gap-3 px-3 py-2 text-red-500 hover:bg-red-50 rounded-lg font-medium">
+            <LogOut size={18} /> ออกจากระบบ
           </a>
-        </nav>
+        </div>
       </aside>
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col overflow-hidden">
-        {/* Topbar */}
-        <header className="h-16 bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-8">
-          <h1 className="font-kanit font-semibold text-lg">ภาพรวมระบบ (Dashboard)</h1>
+        {/* Top Header */}
+        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0">
+          <h1 className="font-kanit font-semibold text-lg">Dashboard ภาพรวม</h1>
           <div className="flex items-center gap-4">
-            <div className="w-9 h-9 bg-gradient-to-br from-teal-400 to-teal-600 rounded-full flex items-center justify-center text-white font-kanit font-bold shadow-md cursor-pointer">
-              U
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+              <input type="text" placeholder="ค้นหาเด็ก..." className="pl-9 pr-4 py-1.5 bg-slate-100 border-none rounded-full text-sm w-64 focus:ring-2 focus:ring-teal-500 outline-none" />
+            </div>
+            <button className="p-2 text-slate-400 hover:bg-slate-100 rounded-full"><Moon size={18} /></button>
+            <button className="p-2 text-slate-400 hover:bg-slate-100 rounded-full"><RefreshCw size={18} /></button>
+            <div className="flex items-center gap-3 ml-2 pl-4 border-l border-slate-200">
+              <div className="text-right">
+                <p className="text-sm font-semibold leading-tight">นพ. สมชาย รักดี</p>
+                <p className="text-[11px] text-slate-500">เจ้าหน้าที่ รพ.</p>
+              </div>
+              <div className="w-8 h-8 bg-teal-600 text-white rounded-full flex items-center justify-center font-semibold">
+                น
+              </div>
             </div>
           </div>
         </header>
 
         {/* Content Area */}
-        <div className="flex-1 overflow-y-auto p-8">
-          {isSuccess && (
-            <div className="mb-6 bg-teal-50 dark:bg-teal-500/10 border border-teal-200 dark:border-teal-500/20 text-teal-700 dark:text-teal-400 px-4 py-3 rounded-xl flex items-center gap-3 animate-fade-in-up">
-              <svg className="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"></path></svg>
-              <p className="font-medium">เข้าสู่ระบบสำเร็จ! ยินดีต้อนรับเข้าสู่ IRON ZERO RISK</p>
-            </div>
-          )}
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          <div>
+            <h2 className="font-kanit text-xl font-semibold mb-1">Dashboard ภาพรวม</h2>
+            <p className="text-sm text-slate-500">สรุปข้อมูลสุขภาพเด็กในชุมชน</p>
+          </div>
 
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-8 animate-fade-in-up" style={{animationDelay: '0.1s', animationFillMode: 'both'}}>
-            {[
-              { label: 'จำนวนเด็กทั้งหมด', value: '1,248', color: 'from-blue-400 to-blue-600' },
-              { label: 'ความเสี่ยงสูง', value: '42', color: 'from-red-400 to-red-600' },
-              { label: 'รอการติดตาม', value: '156', color: 'from-amber-400 to-amber-600' },
-              { label: 'ติดตามสำเร็จ', value: '89', color: 'from-teal-400 to-teal-600' },
-            ].map((stat, i) => (
-              <div key={i} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group cursor-pointer">
-                <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r ${stat.color}`}></div>
-                <p className="text-sm text-slate-500 dark:text-slate-400 font-medium mb-1">{stat.label}</p>
-                <h3 className="text-3xl font-kanit font-bold text-slate-800 dark:text-white">{stat.value}</h3>
+          {isLoading ? (
+            <div className="flex justify-center py-20"><RefreshCw className="animate-spin text-teal-500" size={32} /></div>
+          ) : (
+            <>
+              {/* Stats Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                <StatCard icon={<Users size={20} className="text-teal-500"/>} title="เด็กทั้งหมด" value={totalChildren} sub="ในระบบ" color="border-teal-500" />
+                <StatCard icon={<AlertTriangle size={20} className="text-red-500"/>} title="เสี่ยงสูง" value={highRisk} sub="ต้องติดตามด่วน" color="border-red-500" />
+                <StatCard icon={<AlertTriangle size={20} className="text-amber-500"/>} title="เสี่ยงปานกลาง" value={medRisk} sub="ต้องติดตาม" color="border-amber-500" />
+                <StatCard icon={<UserCheck size={20} className="text-green-500"/>} title="เสี่ยงต่ำ" value={lowRisk} sub="ปลอดภัย" color="border-green-500" />
+                <StatCard icon={<FileText size={20} className="text-blue-500"/>} title="Hct เฉลี่ย (%)" value={avgHct} sub="ค่าฮีมาโตคริต" color="border-blue-500" />
+                <StatCard icon={<Pill size={20} className="text-purple-500"/>} title="ได้รับยาเหล็ก" value={ironSupplements} sub="-" color="border-purple-500" />
               </div>
-            ))}
-          </div>
 
-          {/* Empty State / Welcome Box */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-10 flex flex-col items-center justify-center text-center shadow-sm animate-fade-in-up" style={{animationDelay: '0.2s', animationFillMode: 'both'}}>
-            <div className="w-24 h-24 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mb-6">
-              <svg className="w-12 h-12 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-            </div>
-            <h3 className="font-kanit text-xl font-semibold mb-2">ยังไม่มีข้อมูลที่จะแสดงผล</h3>
-            <p className="text-slate-500 max-w-md">ขณะนี้เรากำลังพัฒนาการเชื่อมต่อ API เพื่อดึงข้อมูลมาแสดงผลในรูปแบบตารางและกราฟ โปรดรอการอัปเดตในเร็วๆ นี้</p>
-          </div>
+              {/* Charts */}
+              <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                
+                {/* Risk Level Chart */}
+                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm col-span-1">
+                  <h3 className="font-kanit font-medium mb-4">ระดับความเสี่ยง</h3>
+                  <div className="h-48">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={riskData} innerRadius={40} outerRadius={70} paddingAngle={2} dataKey="value">
+                          {riskData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <RechartsTooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="flex justify-center gap-3 text-xs mt-2">
+                    <span className="flex items-center gap-1"><div className="w-3 h-3 bg-red-500 rounded-sm"></div> เสี่ยงสูง</span>
+                    <span className="flex items-center gap-1"><div className="w-3 h-3 bg-amber-500 rounded-sm"></div> ปานกลาง</span>
+                    <span className="flex items-center gap-1"><div className="w-3 h-3 bg-green-500 rounded-sm"></div> ต่ำ</span>
+                  </div>
+                </div>
+
+                {/* Nutrition Chart */}
+                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm col-span-1">
+                  <h3 className="font-kanit font-medium mb-4">สถานะโภชนาการ</h3>
+                  <div className="h-48">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={nutritionData} layout="vertical" margin={{ left: 10, right: 10 }}>
+                        <XAxis type="number" hide />
+                        <YAxis dataKey="name" type="category" width={80} tick={{fontSize: 11}} />
+                        <RechartsTooltip />
+                        <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+                          {nutritionData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Blank Chart Placeholder 1 */}
+                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm col-span-1 flex flex-col">
+                  <h3 className="font-kanit font-medium mb-4">เด็กแยกตามหมู่บ้าน</h3>
+                  <div className="flex-1 flex items-center justify-center border-l border-b border-slate-100 relative">
+                    <span className="text-slate-300 text-xs absolute bottom-1 left-2">0</span>
+                    <span className="text-slate-300 text-xs absolute top-1 left-2">1</span>
+                  </div>
+                </div>
+
+                {/* Blank Chart Placeholder 2 */}
+                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm col-span-1 flex flex-col">
+                  <h3 className="font-kanit font-medium mb-4">กลุ่มอายุ</h3>
+                  <div className="flex-1 flex items-end justify-between border-l border-b border-slate-100 pb-1 px-2 relative text-[10px] text-slate-400">
+                    <span className="text-slate-300 text-xs absolute bottom-1 -left-3">0</span>
+                    <span className="text-slate-300 text-xs absolute top-1 -left-3">1</span>
+                    <span>9 เดือน</span><span>1 ปี</span><span>2 ปี</span><span>3 ปี</span><span>4 ปี</span><span>5 ปี</span>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Progress Bar */}
+              <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                <div className="flex justify-between items-end mb-2">
+                  <div>
+                    <h3 className="font-kanit font-medium">ความครอบคลุมยาธาตุเหล็ก</h3>
+                    <p className="text-xs text-slate-500 mt-1">ได้รับยาเหล็ก</p>
+                  </div>
+                  <span className="text-teal-500 font-bold">{ironPercent}%</span>
+                </div>
+                <div className="w-full bg-slate-100 rounded-full h-2.5">
+                  <div className="bg-teal-500 h-2.5 rounded-full" style={{ width: `${ironPercent}%` }}></div>
+                </div>
+              </div>
+
+            </>
+          )}
         </div>
       </main>
+    </div>
+  );
+}
+
+function StatCard({ icon, title, value, sub, color }: any) {
+  return (
+    <div className={`bg-white p-4 rounded-xl shadow-sm border-t-4 border-x border-b border-slate-200 ${color} flex flex-col justify-between h-28`}>
+      <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center mb-2">
+        {icon}
+      </div>
+      <div>
+        <p className="text-xs text-slate-500 mb-0.5">{title}</p>
+        <div className="flex items-end gap-2">
+          <h3 className="text-2xl font-kanit font-bold leading-none">{value}</h3>
+        </div>
+        <p className="text-[10px] text-slate-400 mt-1">{sub}</p>
+      </div>
     </div>
   );
 }

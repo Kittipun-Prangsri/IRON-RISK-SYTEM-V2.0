@@ -134,6 +134,13 @@ function getMappedKey(header) {
 
 // ── GET ENTRYPOINT ──────────────────────────────────────────
 function doGet(e) {
+  // --- API Endpoint สำหรับ Next.js ---
+  if (e && e.parameter && e.parameter.action === "get_data") {
+    var data = getData();
+    return ContentService.createTextOutput(JSON.stringify(data))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  
   var lineUser = null;
   var lineError = null;
   var googleEmail = "";
