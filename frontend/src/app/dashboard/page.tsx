@@ -287,3 +287,11 @@ function StatCard({ icon, title, value, sub, color }: any) {
     </div>
   );
 }
+
+export default function Dashboard() {
+  return (
+    <Suspense fallback={<div className="flex h-screen items-center justify-center bg-slate-50 text-slate-500">กำลังโหลดข้อมูล...</div>}>
+      <DashboardContent />
+    </Suspense>
+  );
+}
