@@ -10,29 +10,27 @@ import {
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const [profile, setProfile] = useState<{name?: string, position?: string, initials?: string} | null>(null);
+  const [profile, setProfile] = useState<{name: string, position: string, hospital: string, initials: string} | null>(null);
 
   useEffect(() => {
-    // Read healthid_profile cookie
-    const cookies = document.cookie.split(';');
-    const healthidCookie = cookies.find(c => c.trim().startsWith('healthid_profile='));
-    if (healthidCookie) {
-      try {
-        const rawData = healthidCookie.split('=')[1];
-        // Decode URI component since Express encodes cookies by default
-        const jsonStr = decodeURIComponent(rawData);
-        const data = JSON.parse(jsonStr);
-        
-        // MOPH HealthID format mapping
-        // Try various common MOPH HealthID fields
-        const fullName = data.name || `${data.given_name || ''} ${data.family_name || ''}`.trim() || 'ผู้ใช้งาน';
-        const position = data.profession_name || data.position || (data.hcode ? 'บุคลากรสาธารณสุข' : 'ผู้ใช้งานระบบ');
-        const initials = data.given_name ? data.given_name.charAt(0) : fullName.charAt(0);
-        
-        setProfile({ name: fullName, position, initials });
-      } catch (e) {
-        console.error('Failed to parse healthid cookie', e);
-      }
+    // Read healthid_profile cookie (set by backend from MOPH Provider ID profile)
+    const healthidCookie = document.cookie.split(';').map(c => c.trim()).find(c => c.startsWith('healthid_profile='));
+    try {
+      if (!healthidCookie) throw new Error('No healthid_profile cookie');
+      // Decode URI component since Express encodes cookies by default
+      const data = JSON.parse(decodeURIComponent(healthidCookie.slice('healthid_profile='.length)));
+      if (!data.name) throw new Error('healthid_profile has no name');
+
+      setProfile({
+        name: data.name,
+        position: data.position || '-',
+        hospital: data.hospital || '-',
+        initials: (data.first_name || data.name).charAt(0),
+      });
+    } catch (e) {
+      // ไม่มีข้อมูลผู้ใช้จริงจาก MOPH ID → กลับไปหน้า login (ห้ามแสดงข้อมูล mock)
+      console.error('Invalid HealthID session', e);
+      window.location.replace('/');
     }
   }, []);
 
@@ -105,9 +103,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
 
         <div className="p-4 border-t border-slate-100">
-          <Link href="/" className="flex items-center gap-3 px-3 py-2 text-red-500 hover:bg-red-50 rounded-lg font-medium">
+          <a href="/auth/logout" className="flex items-center gap-3 px-3 py-2 text-red-500 hover:bg-red-50 rounded-lg font-medium">
             <LogOut size={18} /> ออกจากระบบ
-          </Link>
+          </a>
         </div>
       </aside>
 
@@ -125,12 +123,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <button className="p-2 text-slate-400 hover:bg-slate-100 rounded-full"><RefreshCw size={18} /></button>
             <div className="flex items-center gap-3 ml-2 pl-4 border-l border-slate-200">
               <div className="text-right flex flex-col justify-center">
-                <p className="text-sm font-semibold leading-tight text-slate-800">{profile ? profile.name : 'นพ. สมชาย รักดี'}</p>
-                <p className="text-[11px] text-slate-500 mt-0.5">ตำแหน่ง: {profile ? profile.position : 'แพทย์ปฏิบัติการ'}</p>
-                <p className="text-[11px] text-teal-600 font-medium">สถานที่: โรงพยาบาลคลองหาด</p>
+                <p className="text-sm font-semibold leading-tight text-slate-800">{profile?.name ?? '…'}</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">ตำแหน่ง: {profile?.position ?? '…'}</p>
+                <p className="text-[11px] text-teal-600 font-medium">สถานที่: {profile?.hospital ?? '…'}</p>
               </div>
               <div className="w-10 h-10 bg-gradient-to-br from-teal-500 to-teal-700 text-white rounded-full flex items-center justify-center font-semibold shadow-sm border-2 border-white">
-                {profile ? profile.initials : 'นพ'}
+                {profile?.initials ?? ''}
               </div>
             </div>
           </div>
