@@ -8,10 +8,17 @@ export default function Login() {
         
         {/* Header */}
         <div className="text-center flex flex-col items-center gap-2">
-          {/* We'll use a placeholder for the logo until you add your real image */}
+          {/* โลโก้หยดเลือด — ใช้รูปเดียวกับ favicon (src/app/icon.svg) */}
           <div className="w-[120px] h-[120px] mb-4 flex items-center justify-center bg-white/5 rounded-full border border-teal-500/20 shadow-[0_0_24px_rgba(0,201,167,0.15)]">
-            <svg className="w-16 h-16 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path>
+            <svg className="w-16 h-16" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="login-drop" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stopColor="#2dd4bf" />
+                  <stop offset="1" stopColor="#0f766e" />
+                </linearGradient>
+              </defs>
+              <path d="M16 2.5C16 2.5 5.5 14.2 5.5 20.5a10.5 10.5 0 0 0 21 0C26.5 14.2 16 2.5 16 2.5Z" fill="url(#login-drop)" />
+              <path d="M10.5 20.5a5.5 5.5 0 0 0 4 5.3" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" opacity=".75" />
             </svg>
           </div>
           <h1 className="font-bold text-2xl text-teal-400 tracking-wide">
