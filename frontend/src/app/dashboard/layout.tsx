@@ -41,39 +41,39 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <Link href="/dashboard/children" className={getLinkClass("/dashboard/children")}>
                 <Users size={18} /> ข้อมูลเด็ก
               </Link>
-              <a href="#" className="flex items-center gap-3 px-3 py-2 text-slate-600 hover:bg-slate-50 rounded-lg">
+              <Link href="/dashboard/risk" className={getLinkClass("/dashboard/risk")}>
                 <AlertTriangle size={18} /> การประเมินความเสี่ยง
-              </a>
-              <a href="#" className="flex items-center gap-3 px-3 py-2 text-slate-600 hover:bg-slate-50 rounded-lg">
+              </Link>
+              <Link href="/dashboard/assessment" className={getLinkClass("/dashboard/assessment")}>
                 <UserCheck size={18} /> แบบประเมินรายบุคคล
-              </a>
-              <a href="#" className="flex items-center gap-3 px-3 py-2 text-slate-600 hover:bg-slate-50 rounded-lg">
+              </Link>
+              <Link href="/dashboard/nutrition" className={getLinkClass("/dashboard/nutrition")}>
                 <Apple size={18} /> สถานะโภชนาการ
-              </a>
-              <a href="#" className="flex items-center gap-3 px-3 py-2 text-slate-600 hover:bg-slate-50 rounded-lg">
+              </Link>
+              <Link href="/dashboard/iron" className={getLinkClass("/dashboard/iron")}>
                 <Pill size={18} /> ยาธาตุเหล็ก
-              </a>
+              </Link>
             </nav>
           </div>
           
           <div>
             <p className="text-[11px] font-semibold text-slate-400 mb-2 px-3">จัดการ</p>
             <nav className="space-y-1">
-              <a href="#" className="flex items-center gap-3 px-3 py-2 text-slate-600 hover:bg-slate-50 rounded-lg">
+              <Link href="/dashboard/villages" className={getLinkClass("/dashboard/villages")}>
                 <MapPin size={18} /> หมู่บ้าน
-              </a>
-              <a href="#" className="flex items-center gap-3 px-3 py-2 text-slate-600 hover:bg-slate-50 rounded-lg">
+              </Link>
+              <Link href="/dashboard/add" className={getLinkClass("/dashboard/add")}>
                 <UserPlus size={18} /> เพิ่มข้อมูลเด็ก
-              </a>
-              <a href="#" className="flex items-center gap-3 px-3 py-2 text-slate-600 hover:bg-slate-50 rounded-lg">
+              </Link>
+              <Link href="/dashboard/log" className={getLinkClass("/dashboard/log")}>
                 <ClipboardList size={18} /> บันทึกกิจกรรม
-              </a>
-              <a href="#" className="flex items-center gap-3 px-3 py-2 text-slate-600 hover:bg-slate-50 rounded-lg">
+              </Link>
+              <Link href="/dashboard/users" className={getLinkClass("/dashboard/users")}>
                 <Users size={18} /> จัดการผู้ใช้งาน
-              </a>
-              <a href="#" className="flex items-center gap-3 px-3 py-2 text-slate-600 hover:bg-slate-50 rounded-lg">
+              </Link>
+              <Link href="/dashboard/settings" className={getLinkClass("/dashboard/settings")}>
                 <Settings size={18} /> ตั้งค่า
-              </a>
+              </Link>
             </nav>
           </div>
         </div>
