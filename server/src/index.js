@@ -55,13 +55,25 @@ app.get('/auth/healthid/callback', async (req, res) => {
 
     const { access_token, id_token } = tokenResponse.data;
 
-    // 2. You can now use the access_token to fetch user profile,
-    // or decode the id_token to get user information.
-    // Example (pseudo-code):
-    // const profileResponse = await axios.get(`${healthIdBaseUrl}/userinfo`, {
-    //   headers: { Authorization: `Bearer ${access_token}` }
-    // });
-    // const userData = profileResponse.data;
+    // 2. Fetch user profile using access_token
+    try {
+      const profileResponse = await axios.get(`${healthIdBaseUrl}/api/v1/userinfo`, {
+        headers: { Authorization: `Bearer ${access_token}` }
+      });
+      console.log('HealthID User Profile (from /api/v1/userinfo):', profileResponse.data);
+    } catch (profileErr) {
+      console.error('Error fetching profile from /api/v1/userinfo:', profileErr.response?.data || profileErr.message);
+      // Fallback try without /api/v1
+      try {
+        const fallbackResponse = await axios.get(`${healthIdBaseUrl}/userinfo`, {
+          headers: { Authorization: `Bearer ${access_token}` }
+        });
+        console.log('HealthID User Profile (from /userinfo):', fallbackResponse.data);
+      } catch (fallbackErr) {
+        console.error('Error fetching profile from /userinfo:', fallbackErr.response?.data || fallbackErr.message);
+      }
+    }
+    console.log('ID Token:', id_token);
 
     // 3. Create a session for the user or redirect them to the frontend
     // For now, we will just return success and the token data for debugging.
