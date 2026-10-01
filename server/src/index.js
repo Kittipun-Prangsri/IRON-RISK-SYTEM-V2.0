@@ -72,7 +72,7 @@ app.get('/auth/healthid/callback', async (req, res) => {
     // });
 
     // Normally you redirect back to your frontend with a session token
-    res.redirect(`${process.env.PUBLIC_BASE_URL}/?success=true`);
+    res.redirect(`${process.env.PUBLIC_BASE_URL}/dashboard?success=true`);
 
   } catch (err) {
     console.error('Error exchanging token with HealthID:', err.response?.data || err.message);
