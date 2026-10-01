@@ -5,12 +5,13 @@ import { ClipboardCheck, Edit, Pill, Trash2 } from "lucide-react";
 import { api, errorMessage } from "@/lib/api";
 import { FOOD_OPTIONS, SOCIAL_OPTIONS, ironLabel, villageLabel } from "@/lib/constants";
 import { fmtNum, formatDate, formatDateTime, nowTime, todayISO } from "@/lib/format";
-import type { ChildDetail } from "@/lib/types";
+import type { ChildDetail, MedicineLog } from "@/lib/types";
 import { isStaff, useMe, useToast } from "./AppContext";
 import { Empty, ErrorBox, Field, Loading, Modal, RiskBadge, btn, input } from "./ui";
 
-export function MedicineLogModal({ child, onClose, onSaved }: {
-  child: { id: string; name: string }; onClose: () => void; onSaved: () => void;
+// `basePath` is the registry the person belongs to: "/children" or "/pregnancies".
+export function MedicineLogModal({ child, onClose, onSaved, basePath = "/children", drugName = "ยาธาตุเหล็ก" }: {
+  child: { id: string; name: string }; onClose: () => void; onSaved: () => void; basePath?: string; drugName?: string;
 }) {
   const toast = useToast();
   const [form, setForm] = useState({ taken_on: todayISO(), taken_time: nowTime(), status: "กินยาแล้ว", notes: "" });
@@ -19,7 +20,7 @@ export function MedicineLogModal({ child, onClose, onSaved }: {
   async function submit() {
     setSaving(true);
     try {
-      await api(`/children/${encodeURIComponent(child.id)}/medicine-logs`, { method: "POST", body: form });
+      await api(`${basePath}/${encodeURIComponent(child.id)}/medicine-logs`, { method: "POST", body: form });
       toast(`บันทึกการกินยาของ ${child.name} แล้ว`);
       onSaved();
       onClose();
@@ -32,7 +33,7 @@ export function MedicineLogModal({ child, onClose, onSaved }: {
 
   return (
     <Modal
-      title={<span className="flex items-center gap-2 text-teal-700"><Pill size={20} /> บันทึกการกินยาธาตุเหล็ก</span>}
+      title={<span className="flex items-center gap-2 text-teal-700"><Pill size={20} /> บันทึกการกิน{drugName}</span>}
       onClose={onClose}
       footer={<>
         <button onClick={onClose} className={btn.secondary}>ยกเลิก</button>
@@ -40,7 +41,7 @@ export function MedicineLogModal({ child, onClose, onSaved }: {
       </>}
     >
       <div className="flex flex-col gap-4">
-        <Field label="ชื่อเด็ก"><input readOnly value={child.name} className={`${input} bg-slate-100 text-slate-600`} /></Field>
+        <Field label="ชื่อ"><input readOnly value={child.name} className={`${input} bg-slate-100 text-slate-600`} /></Field>
         <div className="grid grid-cols-2 gap-4">
           <Field label="วันที่กินยา" required>
             <input type="date" max={todayISO()} value={form.taken_on} onChange={(e) => setForm({ ...form, taken_on: e.target.value })} className={input} />
@@ -63,7 +64,31 @@ export function MedicineLogModal({ child, onClose, onSaved }: {
   );
 }
 
-function Info({ label, children }: { label: string; children: React.ReactNode }) {
+export function MedicineHistory({ logs }: { logs: MedicineLog[] }) {
+  return (
+    <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
+      {logs.length === 0 ? <Empty text="ยังไม่มีบันทึกการกินยา" /> : (
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 text-xs text-slate-500">
+            <tr><th className="px-4 py-2 text-left">วันที่</th><th className="px-4 py-2 text-left">สถานะ</th><th className="px-4 py-2 text-left">หมายเหตุ</th><th className="px-4 py-2 text-left">ผู้บันทึก</th></tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {logs.map((l) => (
+              <tr key={l.id}>
+                <td className="px-4 py-2 whitespace-nowrap">{formatDate(l.taken_on)} {l.taken_time?.slice(0, 5)}</td>
+                <td className={`px-4 py-2 ${l.status === "กินยาแล้ว" ? "text-emerald-600" : "text-red-600"}`}>{l.status}</td>
+                <td className="px-4 py-2 text-slate-600">{l.notes || "-"}</td>
+                <td className="px-4 py-2 text-slate-500">{l.recorded_by_name || "-"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+export function Info({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="bg-white p-3 rounded-xl border border-slate-100">
       <p className="text-[11px] text-slate-500 mb-0.5">{label}</p>
@@ -166,25 +191,7 @@ export function ChildDetailModal({ childId, onClose, onChanged }: { childId: str
                 <h4 className="font-kanit font-medium text-slate-800">ประวัติการกินยา</h4>
                 <span className="text-xs text-slate-500">30 วันล่าสุด: กินยา {child.doses_30d} ครั้ง · ล่าสุด {formatDateTime(child.last_medication_at)}</span>
               </div>
-              <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
-                {child.medicine_logs.length === 0 ? <Empty text="ยังไม่มีบันทึกการกินยา" /> : (
-                  <table className="w-full text-sm">
-                    <thead className="bg-slate-50 text-xs text-slate-500">
-                      <tr><th className="px-4 py-2 text-left">วันที่</th><th className="px-4 py-2 text-left">สถานะ</th><th className="px-4 py-2 text-left">หมายเหตุ</th><th className="px-4 py-2 text-left">ผู้บันทึก</th></tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {child.medicine_logs.map((l) => (
-                        <tr key={l.id}>
-                          <td className="px-4 py-2 whitespace-nowrap">{formatDate(l.taken_on)} {l.taken_time?.slice(0, 5)}</td>
-                          <td className={`px-4 py-2 ${l.status === "กินยาแล้ว" ? "text-emerald-600" : "text-red-600"}`}>{l.status}</td>
-                          <td className="px-4 py-2 text-slate-600">{l.notes || "-"}</td>
-                          <td className="px-4 py-2 text-slate-500">{l.recorded_by_name || "-"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
+              <MedicineHistory logs={child.medicine_logs} />
             </div>
           </div>
         )}

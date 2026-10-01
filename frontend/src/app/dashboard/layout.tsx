@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import {
   LayoutDashboard, Users, AlertTriangle, UserCheck,
   Apple, Pill, MapPin, UserPlus, ClipboardList,
-  Settings, LogOut, Search, RefreshCw, Menu, UserCog
+  Settings, LogOut, Search, RefreshCw, Menu, UserCog, Baby, ClipboardCheck, HeartPulse
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { ROLE_LABEL, villageLabel } from "@/lib/constants";
@@ -14,15 +14,21 @@ import type { Me, Role } from "@/lib/types";
 import { MeProvider, ToastProvider } from "@/components/AppContext";
 import { Loading } from "@/components/ui";
 
-type NavItem = { href: string; label: string; icon: React.ReactNode; roles?: Role[] };
+// `exact`: only highlight on this path, not on its sub-pages.
+type NavItem = { href: string; label: string; icon: React.ReactNode; roles?: Role[]; exact?: boolean };
 
 const MAIN_NAV: NavItem[] = [
-  { href: "/dashboard", label: "Dashboard", icon: <LayoutDashboard size={18} /> },
+  { href: "/dashboard", label: "Dashboard", icon: <LayoutDashboard size={18} />, exact: true },
   { href: "/dashboard/children", label: "ข้อมูลเด็ก", icon: <Users size={18} /> },
   { href: "/dashboard/risk", label: "การประเมินความเสี่ยง", icon: <AlertTriangle size={18} /> },
   { href: "/dashboard/assessment", label: "แบบประเมินรายบุคคล", icon: <UserCheck size={18} />, roles: ["admin", "staff"] },
   { href: "/dashboard/nutrition", label: "สถานะโภชนาการ", icon: <Apple size={18} /> },
   { href: "/dashboard/iron", label: "ยาธาตุเหล็ก", icon: <Pill size={18} /> },
+];
+const PREGNANCY_NAV: NavItem[] = [
+  { href: "/dashboard/pregnancy", label: "ทะเบียนหญิงตั้งครรภ์", icon: <HeartPulse size={18} />, exact: true },
+  { href: "/dashboard/pregnancy/assessment", label: "แบบประเมินหญิงตั้งครรภ์", icon: <ClipboardCheck size={18} />, roles: ["admin", "staff"] },
+  { href: "/dashboard/pregnancy/add", label: "เพิ่มหญิงตั้งครรภ์", icon: <Baby size={18} />, roles: ["admin", "staff"] },
 ];
 const MANAGE_NAV: NavItem[] = [
   { href: "/dashboard/villages", label: "หมู่บ้าน", icon: <MapPin size={18} /> },
@@ -52,8 +58,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (!me) return <div className="flex-1 flex items-center justify-center h-screen bg-slate-50"><Loading /></div>;
 
   const visible = (items: NavItem[]) => items.filter((i) => !i.roles || i.roles.includes(me.role));
-  const linkClass = (path: string) =>
-    (path === "/dashboard" ? pathname === path : pathname.startsWith(path))
+  const linkClass = (item: NavItem) =>
+    (item.exact ? pathname === item.href : pathname.startsWith(item.href))
       ? "flex items-center gap-3 px-3 py-2 bg-teal-50 text-teal-600 rounded-lg font-medium"
       : "flex items-center gap-3 px-3 py-2 text-slate-600 hover:bg-slate-50 rounded-lg";
   const navSection = (title: string, items: NavItem[]) => (
@@ -61,7 +67,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <p className="text-[11px] font-semibold text-slate-400 mb-2 px-3">{title}</p>
       <nav className="space-y-1">
         {visible(items).map((i) => (
-          <Link key={i.href} href={i.href} className={linkClass(i.href)}>{i.icon} {i.label}</Link>
+          <Link key={i.href} href={i.href} className={linkClass(i)}>{i.icon} {i.label}</Link>
         ))}
       </nav>
     </div>
@@ -91,7 +97,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
 
             <div className="flex-1 overflow-y-auto py-4 px-3 space-y-6">
-              {navSection("หลัก", MAIN_NAV)}
+              {navSection("เด็กปฐมวัย", MAIN_NAV)}
+              {navSection("หญิงตั้งครรภ์", PREGNANCY_NAV)}
               {navSection("จัดการ", MANAGE_NAV)}
             </div>
 

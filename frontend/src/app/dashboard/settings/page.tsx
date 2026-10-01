@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Download, RefreshCw, ClipboardList, LogOut, Info, User, Database } from "lucide-react";
 import { api, errorMessage } from "@/lib/api";
 import { ROLE_LABEL, villageLabel } from "@/lib/constants";
-import { childrenToCSV, downloadCSV } from "@/lib/csv";
+import { CHILD_CSV_COLUMNS, downloadCSV, toCSV } from "@/lib/csv";
 import { formatDateTime, todayISO } from "@/lib/format";
 import type { Child } from "@/lib/types";
 import { isStaff, useMe, useToast } from "@/components/AppContext";
@@ -35,7 +35,7 @@ export default function SettingsPage() {
     setExporting(true);
     try {
       const children = await api<Child[]>("/children");
-      downloadCSV(`iron-risk-children-${todayISO()}.csv`, childrenToCSV(children));
+      downloadCSV(`iron-risk-children-${todayISO()}.csv`, toCSV(children, CHILD_CSV_COLUMNS));
       toast(`ส่งออกข้อมูลเด็ก ${children.length} คนแล้ว`);
     } catch (err) {
       toast(errorMessage(err), "error");

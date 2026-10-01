@@ -5,7 +5,7 @@
 require('dotenv').config();
 const fs = require('fs');
 const { pool, withTransaction, schema } = require('../src/db');
-const { importChildren, ValidationError } = require('../src/children');
+const { children, ValidationError } = require('../src/registries');
 
 function parseCSV(text) {
   const rows = [];
@@ -39,7 +39,7 @@ function parseCSV(text) {
 
   try {
     const result = await withTransaction(async (client) => {
-      const r = await importChildren(client, list, null);
+      const r = await children.importRows(client, list, null);
       if (!commit) throw Object.assign(new Error('dry run'), { dryRun: r });
       return r;
     });

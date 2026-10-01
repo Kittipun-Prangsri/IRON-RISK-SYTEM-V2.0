@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Search, Plus, Download, X } from "lucide-react";
 import { KHLONG_HAT_VILLAGES, NUTRITION_OPTIONS, RISK_LEVELS, ironLabel } from "@/lib/constants";
-import { childrenToCSV, downloadCSV } from "@/lib/csv";
+import { CHILD_CSV_COLUMNS, downloadCSV, toCSV } from "@/lib/csv";
 import { fmtNum, todayISO } from "@/lib/format";
 import { isStaff, useChildren, useMe } from "@/components/AppContext";
 import { ChildDetailModal } from "@/components/ChildModals";
@@ -39,7 +39,7 @@ function ChildrenContent() {
         title="ข้อมูลเด็ก / ทะเบียนเด็ก"
         subtitle="รายชื่อและข้อมูลสุขภาพของเด็กทั้งหมดในพื้นที่"
         actions={<>
-          <button onClick={() => downloadCSV(`iron-risk-children-${todayISO()}.csv`, childrenToCSV(filtered))} disabled={filtered.length === 0} className={btn.secondary}>
+          <button onClick={() => downloadCSV(`iron-risk-children-${todayISO()}.csv`, toCSV(filtered, CHILD_CSV_COLUMNS))} disabled={filtered.length === 0} className={btn.secondary}>
             <Download size={16} /> ส่งออก CSV
           </button>
           {isStaff(me) && <Link href="/dashboard/add" className={btn.primary}><Plus size={16} /> เพิ่มข้อมูลเด็ก</Link>}

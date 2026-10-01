@@ -2,7 +2,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { CheckCircle2, AlertCircle } from "lucide-react";
 import { api, errorMessage } from "@/lib/api";
-import type { Child, Me } from "@/lib/types";
+import type { Child, Me, Pregnancy } from "@/lib/types";
 
 // ── Logged-in user ─────────────────────────────────────────────────────
 const MeContext = createContext<Me | null>(null);
@@ -44,9 +44,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-// ── Children list ──────────────────────────────────────────────────────
-export function useChildren() {
-  const [children, setChildren] = useState<Child[]>([]);
+// ── Registry lists (children, pregnancies) ─────────────────────────────
+function useList<T>(path: string) {
+  const [items, setItems] = useState<T[]>([]);
   // `loading` is only true until the first response; later reloads refresh the
   // data in place so forms and open modals are not swapped for a spinner.
   const [loading, setLoading] = useState(true);
@@ -55,18 +55,28 @@ export function useChildren() {
   const reload = useCallback(async () => {
     setError(null);
     try {
-      setChildren(await api<Child[]>("/children"));
+      setItems(await api<T[]>(path));
     } catch (err) {
       setError(errorMessage(err));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [path]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data fetch
     reload();
   }, [reload]);
 
-  return { children, loading, error, reload };
+  return { items, loading, error, reload };
+}
+
+export function useChildren() {
+  const { items, ...rest } = useList<Child>("/children");
+  return { children: items, ...rest };
+}
+
+export function usePregnancies() {
+  const { items, ...rest } = useList<Pregnancy>("/pregnancies");
+  return { pregnancies: items, ...rest };
 }

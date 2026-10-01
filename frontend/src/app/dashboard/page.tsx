@@ -1,13 +1,13 @@
 "use client";
 import Link from "next/link";
-import { Users, AlertTriangle, UserCheck, Pill, FileText } from "lucide-react";
+import { Users, AlertTriangle, UserCheck, Pill, FileText, HeartPulse } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
   ResponsiveContainer, PieChart, Pie
 } from "recharts";
 import { ColoredBar, ColoredSector } from "@/components/charts";
 import { AGE_OPTIONS, NUTRITION_OPTIONS, RISK_LEVELS, RISK_STYLE, ironReceived } from "@/lib/constants";
-import { useChildren } from "@/components/AppContext";
+import { useChildren, usePregnancies } from "@/components/AppContext";
 import { Card, Empty, ErrorBox, Loading, RiskBadge } from "@/components/ui";
 
 const NUTRITION_COLOR: Record<string, string> = {
@@ -16,6 +16,8 @@ const NUTRITION_COLOR: Record<string, string> = {
 
 export default function Dashboard() {
   const { children, loading, error, reload } = useChildren();
+  const preg = usePregnancies();
+  const pregnant = preg.pregnancies.filter((p) => !p.delivered_on);
 
   const total = children.length;
   const countRisk = (r: string) => children.filter((c) => c.risk_level === r).length;
@@ -121,6 +123,18 @@ export default function Dashboard() {
               </div>
             </Card>
           </div>
+
+          <Card title="หญิงตั้งครรภ์กลุ่มเสี่ยงขาดธาตุเหล็ก" actions={<Link href="/dashboard/pregnancy" className="text-xs text-teal-700 hover:underline">ดูทะเบียน →</Link>}>
+            {preg.error ? <div className="p-4"><ErrorBox message={preg.error} onRetry={preg.reload} /></div> : preg.loading ? <Loading /> : (
+              <div className="p-5 grid grid-cols-2 md:grid-cols-5 gap-4 text-center">
+                <div><HeartPulse className="mx-auto text-pink-500" size={20} /><p className="text-2xl font-kanit font-bold">{pregnant.length}</p><p className="text-xs text-slate-500">กำลังตั้งครรภ์</p></div>
+                {RISK_LEVELS.map((r) => (
+                  <div key={r}><p className="text-2xl font-kanit font-bold mt-5" style={{ color: RISK_STYLE[r].color }}>{pregnant.filter((p) => p.risk_level === r).length}</p><p className="text-xs text-slate-500">{r}</p></div>
+                ))}
+                <div><p className="text-2xl font-kanit font-bold mt-5 text-red-600">{pregnant.filter((p) => p.hct && p.hct < 33).length}</p><p className="text-xs text-slate-500">Hct &lt; 33%</p></div>
+              </div>
+            )}
+          </Card>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card title="ความครอบคลุมยาธาตุเหล็ก" className="p-0">

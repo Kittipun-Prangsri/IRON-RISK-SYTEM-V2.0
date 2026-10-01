@@ -74,3 +74,47 @@ export interface ActivityLog {
   details: string | null;
   created_at: string;
 }
+
+export interface Pregnancy {
+  id: string;
+  name: string;
+  age_years: number | null;
+  house_number: string | null;
+  village_no: number | null;
+  village_name: string | null;
+  tambon: string | null;
+  amphoe: string | null;
+  province: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  husband_name: string | null;
+  phone: string | null;
+  lmp_date: string | null;
+  delivered_on: string | null;
+  hct: number | null;
+  pre_weight_kg: number | null;
+  current_weight_kg: number | null;
+  height_cm: number | null;
+  weight_gain: string | null;
+  iron_status: string | null;
+  food_behavior: string | null;
+  social_status: string | null;
+  risk_factors: string[];
+  hct_score: number;
+  nutrition_score: number;
+  iron_score: number;
+  food_score: number;
+  social_score: number;
+  obstetric_score: number;
+  total_score: number;
+  risk_level: RiskLevel;
+  last_medication_at: string | null;
+  notes: string | null;
+  doses_30d: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PregnancyDetail extends Pregnancy {
+  medicine_logs: MedicineLog[];
+}
