@@ -17,8 +17,12 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
   options: `-c search_path=${schema}`,
-  max: 5
+  max: 5,
+  // Fail fast instead of hanging the request (and the Next.js proxy) when the
+  // database is unreachable.
+  connectionTimeoutMillis: 10000
 });
+pool.on('error', (err) => console.error('Postgres pool error:', err.message));
 
 async function query(text, params) {
   const { rows } = await pool.query(text, params);
