@@ -1,12 +1,18 @@
 import type { NextConfig } from "next";
 
+// Express backend (server/) — handles MOPH login and every /api call.
+const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:5005";
+
 const nextConfig: NextConfig = {
-  /* config options here */
   async rewrites() {
     return [
       {
         source: '/auth/:path*', // รับ Login จาก MOPH
-        destination: 'http://localhost:5005/auth/:path*' // โยนไปให้ Backend จัดการ
+        destination: `${BACKEND_URL}/auth/:path*` // โยนไปให้ Backend จัดการ
+      },
+      {
+        source: '/api/:path*',
+        destination: `${BACKEND_URL}/api/:path*`
       }
     ];
   }

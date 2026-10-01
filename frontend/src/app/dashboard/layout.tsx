@@ -1,144 +1,141 @@
 "use client";
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { 
-  LayoutDashboard, Users, AlertTriangle, UserCheck, 
-  Apple, Pill, MapPin, UserPlus, ClipboardList, 
-  Settings, LogOut, Search, Moon, RefreshCw
+import {
+  LayoutDashboard, Users, AlertTriangle, UserCheck,
+  Apple, Pill, MapPin, UserPlus, ClipboardList,
+  Settings, LogOut, Search, RefreshCw, Menu, UserCog
 } from "lucide-react";
+import { api } from "@/lib/api";
+import { ROLE_LABEL, villageLabel } from "@/lib/constants";
+import type { Me, Role } from "@/lib/types";
+import { MeProvider, ToastProvider } from "@/components/AppContext";
+import { Loading } from "@/components/ui";
+
+type NavItem = { href: string; label: string; icon: React.ReactNode; roles?: Role[] };
+
+const MAIN_NAV: NavItem[] = [
+  { href: "/dashboard", label: "Dashboard", icon: <LayoutDashboard size={18} /> },
+  { href: "/dashboard/children", label: "ข้อมูลเด็ก", icon: <Users size={18} /> },
+  { href: "/dashboard/risk", label: "การประเมินความเสี่ยง", icon: <AlertTriangle size={18} /> },
+  { href: "/dashboard/assessment", label: "แบบประเมินรายบุคคล", icon: <UserCheck size={18} />, roles: ["admin", "staff"] },
+  { href: "/dashboard/nutrition", label: "สถานะโภชนาการ", icon: <Apple size={18} /> },
+  { href: "/dashboard/iron", label: "ยาธาตุเหล็ก", icon: <Pill size={18} /> },
+];
+const MANAGE_NAV: NavItem[] = [
+  { href: "/dashboard/villages", label: "หมู่บ้าน", icon: <MapPin size={18} /> },
+  { href: "/dashboard/add", label: "เพิ่มข้อมูลเด็ก", icon: <UserPlus size={18} />, roles: ["admin", "staff"] },
+  { href: "/dashboard/log", label: "บันทึกกิจกรรม", icon: <ClipboardList size={18} />, roles: ["admin", "staff"] },
+  { href: "/dashboard/users", label: "จัดการผู้ใช้งาน", icon: <UserCog size={18} />, roles: ["admin"] },
+  { href: "/dashboard/settings", label: "ตั้งค่า", icon: <Settings size={18} /> },
+];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const [profile, setProfile] = useState<{name: string, position: string, hospital: string, initials: string} | null>(null);
+  const router = useRouter();
+  const [me, setMe] = useState<Me | null>(null);
+  const [search, setSearch] = useState("");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
-    // Read healthid_profile cookie (set by backend from MOPH Provider ID profile)
-    const healthidCookie = document.cookie.split(';').map(c => c.trim()).find(c => c.startsWith('healthid_profile='));
-    try {
-      if (!healthidCookie) throw new Error('No healthid_profile cookie');
-      // Decode URI component since Express encodes cookies by default
-      const data = JSON.parse(decodeURIComponent(healthidCookie.slice('healthid_profile='.length)));
-      if (!data.name) throw new Error('healthid_profile has no name');
-
-      setProfile({
-        name: data.name,
-        position: data.position || '-',
-        hospital: data.hospital || '-',
-        initials: (data.first_name || data.name).charAt(0),
-      });
-    } catch (e) {
-      // ไม่มีข้อมูลผู้ใช้จริงจาก MOPH ID → กลับไปหน้า login (ห้ามแสดงข้อมูล mock)
-      console.error('Invalid HealthID session', e);
-      window.location.replace('/');
-    }
+    // Not logged in → api() redirects to the login page (ห้ามแสดงข้อมูล mock)
+    api<Me>("/me").then(setMe).catch(() => {});
   }, []);
 
-  const getLinkClass = (path: string) => {
-    return pathname === path 
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- close the mobile drawer after navigating
+    setSidebarOpen(false);
+  }, [pathname]);
+
+  if (!me) return <div className="flex-1 flex items-center justify-center h-screen bg-slate-50"><Loading /></div>;
+
+  const visible = (items: NavItem[]) => items.filter((i) => !i.roles || i.roles.includes(me.role));
+  const linkClass = (path: string) =>
+    (path === "/dashboard" ? pathname === path : pathname.startsWith(path))
       ? "flex items-center gap-3 px-3 py-2 bg-teal-50 text-teal-600 rounded-lg font-medium"
       : "flex items-center gap-3 px-3 py-2 text-slate-600 hover:bg-slate-50 rounded-lg";
-  };
+  const navSection = (title: string, items: NavItem[]) => (
+    <div>
+      <p className="text-[11px] font-semibold text-slate-400 mb-2 px-3">{title}</p>
+      <nav className="space-y-1">
+        {visible(items).map((i) => (
+          <Link key={i.href} href={i.href} className={linkClass(i.href)}>{i.icon} {i.label}</Link>
+        ))}
+      </nav>
+    </div>
+  );
+
+  function submitSearch(e: React.FormEvent) {
+    e.preventDefault();
+    router.push(`/dashboard/children?q=${encodeURIComponent(search.trim())}`);
+  }
 
   return (
-    <div className="flex h-screen bg-slate-50 font-sarabun text-slate-800">
-      
-      {/* Sidebar */}
-      <aside className="w-64 bg-white border-r border-slate-200 flex flex-col shadow-sm z-10">
-        <div className="p-5 border-b border-slate-100 flex items-center gap-3">
-          <div className="w-10 h-10 bg-teal-50 text-teal-600 rounded-lg flex items-center justify-center">
-            <Image src="/icon.svg" alt="Iron Zero Risk" width={26} height={26} />
-          </div>
-          <div>
-            <h2 className="font-kanit font-bold text-teal-600 leading-tight">Iron Zero Risk</h2>
-            <p className="text-[11px] text-slate-500">ระบบติดตามสุขภาพเด็ก</p>
-          </div>
-        </div>
-        
-        <div className="flex-1 overflow-y-auto py-4 px-3 space-y-6">
-          <div>
-            <p className="text-[11px] font-semibold text-slate-400 mb-2 px-3">หลัก</p>
-            <nav className="space-y-1">
-              <Link href="/dashboard" className={getLinkClass("/dashboard")}>
-                <LayoutDashboard size={18} /> Dashboard
-              </Link>
-              <Link href="/dashboard/children" className={getLinkClass("/dashboard/children")}>
-                <Users size={18} /> ข้อมูลเด็ก
-              </Link>
-              <Link href="/dashboard/risk" className={getLinkClass("/dashboard/risk")}>
-                <AlertTriangle size={18} /> การประเมินความเสี่ยง
-              </Link>
-              <Link href="/dashboard/assessment" className={getLinkClass("/dashboard/assessment")}>
-                <UserCheck size={18} /> แบบประเมินรายบุคคล
-              </Link>
-              <Link href="/dashboard/nutrition" className={getLinkClass("/dashboard/nutrition")}>
-                <Apple size={18} /> สถานะโภชนาการ
-              </Link>
-              <Link href="/dashboard/iron" className={getLinkClass("/dashboard/iron")}>
-                <Pill size={18} /> ยาธาตุเหล็ก
-              </Link>
-            </nav>
-          </div>
-          
-          <div>
-            <p className="text-[11px] font-semibold text-slate-400 mb-2 px-3">จัดการ</p>
-            <nav className="space-y-1">
-              <Link href="/dashboard/villages" className={getLinkClass("/dashboard/villages")}>
-                <MapPin size={18} /> หมู่บ้าน
-              </Link>
-              <Link href="/dashboard/add" className={getLinkClass("/dashboard/add")}>
-                <UserPlus size={18} /> เพิ่มข้อมูลเด็ก
-              </Link>
-              <Link href="/dashboard/log" className={getLinkClass("/dashboard/log")}>
-                <ClipboardList size={18} /> บันทึกกิจกรรม
-              </Link>
-              <Link href="/dashboard/users" className={getLinkClass("/dashboard/users")}>
-                <Users size={18} /> จัดการผู้ใช้งาน
-              </Link>
-              <Link href="/dashboard/settings" className={getLinkClass("/dashboard/settings")}>
-                <Settings size={18} /> ตั้งค่า
-              </Link>
-            </nav>
-          </div>
-        </div>
+    <MeProvider value={me}>
+      <ToastProvider>
+        <div className="flex h-screen bg-slate-50 font-sarabun text-slate-800">
+          {sidebarOpen && <div className="fixed inset-0 bg-slate-900/30 z-20 md:hidden" onClick={() => setSidebarOpen(false)} />}
 
-        <div className="p-4 border-t border-slate-100">
-          <a href="/auth/logout" className="flex items-center gap-3 px-3 py-2 text-red-500 hover:bg-red-50 rounded-lg font-medium">
-            <LogOut size={18} /> ออกจากระบบ
-          </a>
-        </div>
-      </aside>
-
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col overflow-hidden">
-        {/* Top Header */}
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0">
-          <h1 className="font-kanit font-semibold text-lg">IRON ZERO RISK</h1>
-          <div className="flex items-center gap-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-              <input type="text" placeholder="ค้นหาเด็ก..." className="pl-9 pr-4 py-1.5 bg-slate-100 border-none rounded-full text-sm w-64 focus:ring-2 focus:ring-teal-500 outline-none" />
-            </div>
-            <button className="p-2 text-slate-400 hover:bg-slate-100 rounded-full"><Moon size={18} /></button>
-            <button className="p-2 text-slate-400 hover:bg-slate-100 rounded-full"><RefreshCw size={18} /></button>
-            <div className="flex items-center gap-3 ml-2 pl-4 border-l border-slate-200">
-              <div className="text-right flex flex-col justify-center">
-                <p className="text-sm font-semibold leading-tight text-slate-800">{profile?.name ?? '…'}</p>
-                <p className="text-[11px] text-slate-500 mt-0.5">ตำแหน่ง: {profile?.position ?? '…'}</p>
-                <p className="text-[11px] text-teal-600 font-medium">สถานที่: {profile?.hospital ?? '…'}</p>
+          {/* Sidebar */}
+          <aside className={`fixed md:static inset-y-0 left-0 w-64 bg-white border-r border-slate-200 flex flex-col shadow-sm z-30 transition-transform md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
+            <div className="p-5 border-b border-slate-100 flex items-center gap-3">
+              <div className="w-10 h-10 bg-teal-50 text-teal-600 rounded-lg flex items-center justify-center">
+                <Image src="/icon.svg" alt="Iron Zero Risk" width={26} height={26} />
               </div>
-              <div className="w-10 h-10 bg-gradient-to-br from-teal-500 to-teal-700 text-white rounded-full flex items-center justify-center font-semibold shadow-sm border-2 border-white">
-                {profile?.initials ?? ''}
+              <div>
+                <h2 className="font-kanit font-bold text-teal-600 leading-tight">Iron Zero Risk</h2>
+                <p className="text-[11px] text-slate-500">ระบบติดตามสุขภาพเด็ก</p>
               </div>
             </div>
-          </div>
-        </header>
 
-        {/* Page Content */}
-        {children}
+            <div className="flex-1 overflow-y-auto py-4 px-3 space-y-6">
+              {navSection("หลัก", MAIN_NAV)}
+              {navSection("จัดการ", MANAGE_NAV)}
+            </div>
 
-      </main>
-    </div>
+            <div className="p-4 border-t border-slate-100">
+              <a href="/auth/logout" className="flex items-center gap-3 px-3 py-2 text-red-500 hover:bg-red-50 rounded-lg font-medium">
+                <LogOut size={18} /> ออกจากระบบ
+              </a>
+            </div>
+          </aside>
+
+          {/* Main Content */}
+          <main className="flex-1 flex flex-col overflow-hidden min-w-0">
+            {/* Top Header */}
+            <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between gap-3 px-4 md:px-6 shrink-0">
+              <div className="flex items-center gap-2">
+                <button onClick={() => setSidebarOpen(true)} className="p-2 -ml-2 text-slate-500 hover:bg-slate-100 rounded-lg md:hidden" aria-label="เปิดเมนู"><Menu size={20} /></button>
+                <h1 className="font-kanit font-semibold text-lg hidden sm:block">IRON ZERO RISK</h1>
+              </div>
+              <div className="flex items-center gap-2 md:gap-4 min-w-0">
+                <form onSubmit={submitSearch} className="relative hidden md:block">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                  <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาเด็ก..." className="pl-9 pr-4 py-1.5 bg-slate-100 border-none rounded-full text-sm w-56 lg:w-64 focus:ring-2 focus:ring-teal-500 outline-none" />
+                </form>
+                <button onClick={() => window.location.reload()} title="รีเฟรชข้อมูล" className="p-2 text-slate-400 hover:bg-slate-100 rounded-full"><RefreshCw size={18} /></button>
+                <Link href="/dashboard/settings" className="flex items-center gap-3 md:ml-2 md:pl-4 md:border-l border-slate-200 min-w-0">
+                  <div className="text-right flex-col justify-center min-w-0 hidden sm:flex">
+                    <p className="text-sm font-semibold leading-tight text-slate-800 truncate">{me.name}</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5 truncate">ตำแหน่ง: {me.position || ROLE_LABEL[me.role]}</p>
+                    <p className="text-[11px] text-teal-600 font-medium truncate">
+                      {me.role === "vhv" ? `รับผิดชอบ: ${villageLabel(me.assigned_village_no)}` : `สถานที่: ${me.hospital || "-"}`}
+                    </p>
+                  </div>
+                  <div className="w-10 h-10 shrink-0 bg-gradient-to-br from-teal-500 to-teal-700 text-white rounded-full flex items-center justify-center font-semibold shadow-sm border-2 border-white">
+                    {me.name.replace(/^(นาย|นางสาว|นาง|นพ\.|พญ\.|ทพ\.|ทพญ\.|ภก\.|ภญ\.)/, "").trim().charAt(0)}
+                  </div>
+                </Link>
+              </div>
+            </header>
+
+            {/* Page Content */}
+            <div className="flex-1 overflow-y-auto">{children}</div>
+          </main>
+        </div>
+      </ToastProvider>
+    </MeProvider>
   );
 }

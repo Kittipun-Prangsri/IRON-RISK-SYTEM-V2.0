@@ -5,3 +5,12 @@ __pycache__/
 .DS_Store
 scratch/
 
+
+# Secrets — never commit (server/.env.example is the template)
+.env
+.env.*
+!.env.example
+*.secret.local
+
+# Exports of real children's health data (PDPA)
+server/ironfile/
