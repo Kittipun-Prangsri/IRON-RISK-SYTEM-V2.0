@@ -18,9 +18,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const healthidCookie = cookies.find(c => c.trim().startsWith('healthid_profile='));
     if (healthidCookie) {
       try {
-        const base64Data = healthidCookie.split('=')[1];
-        // Decode base64, handling possible URI encoding
-        const jsonStr = atob(decodeURIComponent(base64Data));
+        const rawData = healthidCookie.split('=')[1];
+        // Decode URI component since Express encodes cookies by default
+        const jsonStr = decodeURIComponent(rawData);
         const data = JSON.parse(jsonStr);
         
         // MOPH HealthID format mapping

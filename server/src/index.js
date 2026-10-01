@@ -80,9 +80,7 @@ app.get('/auth/healthid/callback', async (req, res) => {
 
     // 3. Create a session for the user or redirect them to the frontend
     if (userData) {
-      // Encode user data as base64 to safely pass in cookie
-      const userBase64 = Buffer.from(JSON.stringify(userData)).toString('base64');
-      res.cookie('healthid_profile', userBase64, { 
+      res.cookie('healthid_profile', JSON.stringify(userData), { 
         maxAge: 24 * 60 * 60 * 1000, // 1 day
         httpOnly: false, // Allow frontend JS to read for UI
         path: '/' // สำคัญมาก: ต้องให้ cookie อ่านได้จากทุกหน้า (รวมถึง /dashboard)
